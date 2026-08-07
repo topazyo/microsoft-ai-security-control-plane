@@ -19,6 +19,5 @@ Desktop.ini
 .env
 .env.*
 
-# OMC state
-.omc/state/
-.omc/logs/
+# OMC
+.omc/
