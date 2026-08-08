@@ -144,8 +144,11 @@ Workflows use `pull_request`, never `pull_request_target`, so fork pull requests
 never receive secrets. Each job declares least-privilege `permissions`; the
 top-level default is `permissions: {}`.
 
-Before enabling these workflows on a public repository, pin
-`anthropics/claude-code-action@v1` to a commit SHA.
+`anthropics/claude-code-action` is pinned to a commit SHA rather than the `v1`
+tag, because a tag can be repointed at new code and that step holds both an API
+key and write permissions. Upgrading is therefore a deliberate edit: resolve the
+new tag to a SHA (`gh api repos/anthropics/claude-code-action/commits/v1 --jq .sha`)
+and update both workflows together.
 
 ## Operating the cadence
 
