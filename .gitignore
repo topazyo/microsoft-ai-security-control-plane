@@ -31,6 +31,11 @@ __pycache__/
 .claude/settings.local.json
 .claude/session-logs/
 
+# Claude Code creates isolated worktrees here. Each one is a full checkout of
+# this repository, so without this rule they show up as untracked content in
+# the parent checkout and can be committed by accident.
+.claude/worktrees/
+
 # CLAUDE.md is kept local: it carries absolute vault-import paths that would
 # publish a workstation layout and username in a public repository, and would
 # not resolve for anyone else cloning. Shared, portable instructions belong in
