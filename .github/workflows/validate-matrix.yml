@@ -1,0 +1,58 @@
+# Deterministic validation gate for every change to the matrix and its
+# supporting files - automated or human.
+#
+# These checks are the mechanical form of rules the repository already states in
+# prose: primary sources must be Microsoft Learn or the public Microsoft 365
+# Roadmap, status labels must come from the four-label legend, every row must
+# carry a last-verified date, and a row may never be moved out of "Requires
+# further validation" without in-tenant confirmation by a human.
+#
+# `pull_request` (not `pull_request_target`) is used deliberately: fork pull
+# requests must never receive repository secrets. This job needs none.
+name: Validate matrix
+
+on:
+  pull_request:
+    paths:
+      - 'matrix/**'
+      - 'crosswalk/**'
+      - 'checklists/**'
+      - 'CHANGELOG.md'
+      - '.github/watch-state/**'
+      - 'scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'matrix/**'
+      - 'crosswalk/**'
+      - 'checklists/**'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  validate:
+    name: Sourcing, labelling and confidentiality checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile the automation scripts
+        run: python3 -m compileall -q scripts
+
+      - name: Validate matrix, sourcing and escalation direction
+        run: |
+          python3 scripts/validate_bot_pr.py \
+            --base-ref "origin/${{ github.event.pull_request.base.ref || 'main' }}"
+
+      - name: Report staleness (informational)
+        run: |
+          python3 scripts/stale_guard.py >> "${GITHUB_STEP_SUMMARY}" || true

@@ -1,0 +1,115 @@
+# Tier D1 (detect) + tier D2 (adjudicate).
+#
+# The two tiers live in one workflow file as two jobs with separate permissions.
+# Cross-workflow dispatch driven by GITHUB_TOKEN does not reliably start a second
+# workflow, so co-locating them is the dependable way to keep judgement
+# event-gated: the `adjudicate` job runs only when `detect` reports a real change.
+#
+# The `detect` job holds no secret and cannot write. Judgement never runs on an
+# unchanged source.
+name: Source watch
+
+on:
+  schedule:
+    # Deliberately off the hour: scheduled runs are delayed or dropped at peak load.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_adjudication:
+        description: 'Run the adjudicator even if no change was detected'
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: source-watch
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect status-relevant change
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.watch.outputs.changed }}
+      changed_sources: ${{ steps.watch.outputs.changed_sources }}
+      failed_sources: ${{ steps.watch.outputs.failed_sources }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fingerprint pinned sources
+        id: watch
+        run: |
+          python3 scripts/watch_sources.py \
+            --evidence-out "${RUNNER_TEMP}/evidence.json" \
+            | tee "${RUNNER_TEMP}/watch.log"
+
+      - name: Upload evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-bundle
+          path: ${{ runner.temp }}/evidence.json
+          retention-days: 30
+
+      - name: Report unreachable sources
+        if: steps.watch.outputs.failed_sources != ''
+        run: |
+          echo "::warning::Unreachable sources this run: ${{ steps.watch.outputs.failed_sources }}."
+          echo "Baselines were preserved and no last-verified date was advanced."
+          echo "These rows will age into the staleness window and be raised by the stale guard."
+
+  adjudicate:
+    name: Adjudicate detected change
+    needs: detect
+    if: needs.detect.outputs.changed == 'true' || inputs.force_adjudication
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download evidence bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: evidence-bundle
+          path: evidence
+
+      - name: Adjudicate
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Rotate this secret on the usual cadence; it is never echoed. Pin this
+          # action to a commit SHA before enabling the workflow on a public repo.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The adjudicator is denied network tools by construction: it reasons
+          # only over the evidence bundle the watcher produced.
+          claude_args: >-
+            --allowedTools "Read,Edit,Grep,Glob,Bash(python3 scripts/*),Bash(git *),Bash(gh pr *),Bash(gh issue *)"
+          prompt: |
+            Follow `.claude/agents/status-adjudicator.md` exactly. It defines your
+            role, your permitted writes and your forbidden actions.
+
+            Changed sources this run: ${{ needs.detect.outputs.changed_sources }}
+            Evidence bundle: evidence/evidence.json
+
+            Work only from the evidence bundle. You have no network access and must
+            not attempt to fetch anything. Open a draft pull request; never merge.
+
+      - name: Validate the adjudicator's output
+        run: |
+          python3 scripts/validate_bot_pr.py \
+            --bot \
+            --base-ref "origin/${GITHUB_REF_NAME}" \
+            --evidence evidence/evidence.json

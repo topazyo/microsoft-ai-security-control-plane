@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "comment": "Pinned source registry for the automated cadence. Every entry maps a primary source to the matrix rows whose status depends on it. Adding a source here is the only way to bring it under automated watch; see docs/agent-cadence.md.",
+  "staleness_window_days": 30,
+  "sources": [
+    {
+      "id": "purview-dlp-copilot",
+      "title": "Microsoft Purview DLP for Microsoft 365 Copilot and Copilot Chat",
+      "url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
+      "mode": "html",
+      "matrix_rows": [1, 2, 3, 5],
+      "note": "Backing docs repository MicrosoftDocs/Purview-pr is not public (raw fetch returned HTTP 404 on 2026-08-07), so HTML fingerprinting is required for this source. Re-probe periodically: if a public mirror appears, switch mode to 'markdown'."
+    },
+    {
+      "id": "defender-ai-threat-protection",
+      "title": "AI threat protection in Microsoft Defender for Cloud",
+      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/ai-threat-protection.md",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
+      "mode": "markdown",
+      "matrix_rows": [4],
+      "note": "Backing docs repository MicrosoftDocs/defender-docs is public (raw fetch returned HTTP 200 on 2026-08-07). Watching the source markdown avoids rendered-page navigation churn entirely. cite_url is the Microsoft Learn URL that must appear in the matrix; the raw URL is a fetch mechanism only and is never cited as a primary source."
+    },
+    {
+      "id": "defender-release-notes",
+      "title": "Microsoft Defender for Cloud release notes",
+      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/release-notes.md",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
+      "mode": "markdown",
+      "matrix_rows": [4],
+      "relevance_filter": ["\\bAI\\b", "\\bFoundry\\b", "artificial intelligence"],
+      "note": "Carries the dated GA / Preview entries that evidence row 4's status dates. This page also carries dozens of release notes for products outside this repository's scope (containers, SQL, Kubernetes); without relevance_filter the fingerprint would change on almost every run and the detector would escalate constantly for entries that cannot affect any matrix row."
+    },
+    {
+      "id": "defender-release-notes-archive",
+      "title": "Microsoft Defender for Cloud release notes archive",
+      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/release-notes-archive.md",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
+      "mode": "markdown",
+      "matrix_rows": [4],
+      "relevance_filter": ["\\bAI\\b", "\\bFoundry\\b", "artificial intelligence"],
+      "note": "Holds the dated 'General Availability for Defender for AI Services - May 1, 2025' entry that row 4's GA date rests on. Added on 2026-08-07 after the citation-containment validator found this URL cited in the matrix but absent from the registry."
+    },
+    {
+      "id": "m365-roadmap-548671",
+      "title": "Microsoft 365 Roadmap feature 548671",
+      "url": "https://www.microsoft.com/releasecommunications/api/v1/m365",
+      "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
+      "mode": "roadmap",
+      "feature_id": 548671,
+      "matrix_rows": [2],
+      "note": "The per-feature endpoint (/api/v1/m365/features/<id>) returned HTTP 404 on 2026-08-07; the collection endpoint returned HTTP 200 and contains the feature. The watcher fetches the collection and selects by feature_id."
+    }
+  ],
+  "human_only_sources": [
+    {
+      "id": "message-center",
+      "title": "Microsoft 365 Message Center",
+      "reason": "Message Center posts are tenant-scoped and have no public URL (docs/how-to-read-status.md). Reading them would require a tenant credential in repository secrets and would introduce tenant-scoped data, which disclaimer.md and the README confidentiality note forbid. This source is therefore permanently human-only and is never fetched by any workflow.",
+      "covered_by": "checklists/capability-status-verification.md, Group 9"
+    },
+    {
+      "id": "csa-aicm",
+      "title": "CSA AI Controls Matrix (AICM) spreadsheet",
+      "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified by a human against the AICM workbook.",
+      "covered_by": "checklists/capability-status-verification.md, Group 9"
+    }
+  ]
+}
