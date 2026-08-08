@@ -19,6 +19,7 @@ on:
       - 'checklists/**'
       - 'CHANGELOG.md'
       - '.github/watch-state/**'
+      - '.github/workflows/**'
       - 'scripts/**'
   push:
     branches: [main]
@@ -26,11 +27,27 @@ on:
       - 'matrix/**'
       - 'crosswalk/**'
       - 'checklists/**'
+      - '.github/workflows/**'
+      - 'scripts/**'
   workflow_dispatch:
 
 permissions: {}
 
 jobs:
+  workflows:
+    name: Lint workflow definitions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to an explicit actionlint version rather than :latest, and run as
+      # a container image so no script is fetched from the network at run time.
+      # actionlint discovers .github/workflows itself from the repository root.
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+
   validate:
     name: Sourcing, labelling and confidentiality checks
     runs-on: ubuntu-latest

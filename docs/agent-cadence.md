@@ -56,6 +56,10 @@ that forms judgements cannot touch the outside world.
   watcher actually fetched.
 - `scripts/validate_bot_pr.py` gates the result deterministically.
 
+`validate-matrix.yml` also lints the workflow definitions themselves with a
+pinned `actionlint` image, and its path filter includes `.github/workflows/**`,
+so a change that breaks the automation is caught by the automation.
+
 This separation is worth its complexity at four rows because it converts prose
 rules into mechanical invariants. "Never cite a source you did not read" is
 unenforceable as an instruction and trivially enforceable as a set-membership
