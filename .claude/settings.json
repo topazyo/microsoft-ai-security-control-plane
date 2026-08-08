@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PROJECT_DIR}/.claude/hooks/postcompact-wrap-up.ps1\" ] && pwsh -NoProfile -NonInteractive -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/postcompact-wrap-up.ps1\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PROJECT_DIR}/.claude/hooks/instructions-loaded-log.ps1\" ] && pwsh -NoProfile -NonInteractive -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/instructions-loaded-log.ps1\" || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ]
+  }
+}
