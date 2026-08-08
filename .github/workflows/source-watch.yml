@@ -51,7 +51,7 @@ jobs:
             | tee "${RUNNER_TEMP}/watch.log"
 
       - name: Upload evidence bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evidence-bundle
           path: ${{ runner.temp }}/evidence.json
@@ -81,7 +81,7 @@ jobs:
           python-version: '3.12'
 
       - name: Download evidence bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: evidence-bundle
           path: evidence
