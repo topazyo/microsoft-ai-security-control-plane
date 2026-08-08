@@ -26,3 +26,13 @@ __pycache__/
 
 # OMC
 .omc/
+
+# Claude Code local settings (personal, machine-specific)
+.claude/settings.local.json
+.claude/session-logs/
+
+# CLAUDE.md is kept local: it carries absolute vault-import paths that would
+# publish a workstation layout and username in a public repository, and would
+# not resolve for anyone else cloning. Shared, portable instructions belong in
+# .claude/rules/ instead, which is tracked.
+/CLAUDE.md
