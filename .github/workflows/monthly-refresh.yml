@@ -1,0 +1,90 @@
+# Tier D3 - monthly consolidating re-verification.
+#
+# This is the tier that satisfies the README's "Maintenance & cadence" commitment:
+# every row is re-verified against its primary source, last-verified stamps are
+# advanced only where the source was actually re-read, and the month's single
+# CHANGELOG entry is written.
+#
+# This job always writes something, even when no status changed. That is
+# deliberate for two reasons: the existing 2026-07-14 entry sets the precedent
+# that a refresh which changes nothing is still recorded, and GitHub disables
+# scheduled workflows after roughly 60 days of repository inactivity - a quiet
+# reference repository whose automation never commits can silently switch its own
+# schedule off.
+name: Monthly refresh
+
+on:
+  schedule:
+    # 06:23 UTC on the 6th of each month. Off the hour, and clear of month-start load.
+    - cron: '23 6 6 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: monthly-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Re-verify all rows and record the refresh
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Re-fetch every pinned source
+        id: watch
+        run: |
+          python3 scripts/watch_sources.py \
+            --update-baseline \
+            --evidence-out evidence/evidence.json
+
+      - name: Flag unreachable sources
+        if: steps.watch.outputs.failed_sources != ''
+        run: |
+          echo "::warning::Unreachable this run: ${{ steps.watch.outputs.failed_sources }}."
+          echo "Rows depending on these sources must NOT have their last-verified date advanced."
+
+      - name: Consolidate, update stamps and write the CHANGELOG entry
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: >-
+            --allowedTools "Read,Edit,Grep,Glob,Bash(python3 scripts/*),Bash(git *),Bash(gh pr *),Bash(gh issue *)"
+          prompt: |
+            Follow `.claude/agents/status-adjudicator.md` exactly, running the
+            monthly consolidation described in its "Monthly consolidation" section.
+
+            Evidence bundle: evidence/evidence.json
+            Sources that could NOT be fetched this run: ${{ steps.watch.outputs.failed_sources }}
+
+            Advance a row's last-verified date only where its source was fetched
+            successfully this run. Write exactly one CHANGELOG heading for this
+            calendar month using `scripts/changelog_entry.py`. Open a draft pull
+            request; never merge.
+
+      - name: Validate the proposed refresh
+        run: |
+          python3 scripts/validate_bot_pr.py \
+            --bot \
+            --base-ref "origin/${GITHUB_REF_NAME}" \
+            --evidence evidence/evidence.json
+
+      - name: Escalate rows needing in-tenant confirmation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/stale_guard.py > staleness.txt || true
+          if grep -q "exceed the" staleness.txt; then
+            echo "::warning::Staleness remains after the monthly refresh; see the run summary."
+            cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"
+          fi

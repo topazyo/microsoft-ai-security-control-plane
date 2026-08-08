@@ -1,0 +1,71 @@
+# Tier D4 - staleness guard.
+#
+# Executes the rule the README already commits to: "Any row older than the monthly
+# window is treated as stale." Before this workflow existed the rule was stated
+# but never enforced, which is how the cross-walk and the checklist came to sit 35
+# days unrefreshed with nothing to flag them.
+#
+# Deterministic, holds no secret, and cannot write to any content file. It reads
+# dates and raises an issue. It never assigns a status.
+name: Stale guard
+
+on:
+  schedule:
+    - cron: '41 8 * * 1'   # Mondays, off the hour
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: stale-guard
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check last-verified dates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Evaluate staleness
+        id: stale
+        run: python3 scripts/stale_guard.py | tee staleness.txt
+
+      - name: Open or update the staleness issue
+        if: steps.stale.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'Stale rows: last-verified dates exceed the monthly window'
+        run: |
+          {
+            echo "The following items are past the staleness window defined in"
+            echo ".github/watch-state/sources.json."
+            echo
+            cat staleness.txt
+            echo
+            echo "Re-verification is a human step for any row whose status is"
+            echo "**Requires further validation**, and for the Message Center and"
+            echo "CSA AICM sources, which are not machine-fetchable. See"
+            echo "checklists/capability-status-verification.md, Group 9."
+            echo
+            echo "_Raised automatically by the stale guard; this issue is reused, not duplicated._"
+          } > body.md
+
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+            echo "Updated issue #${existing}."
+          else
+            gh issue create --title "$TITLE" --body-file body.md --label stale-rows
+            echo "Opened a new staleness issue."
+          fi
+
+      - name: Record result in the run summary
+        run: cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"

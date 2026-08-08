@@ -1,0 +1,163 @@
+{
+  "updated_at": "2026-08-07T18:32:02Z",
+  "sources": {
+    "purview-dlp-copilot": {
+      "ok": true,
+      "fingerprint": "43b05feab479e7fe07d242c11c8d8242f192134c59aef4971395bbfb1ba669fd",
+      "signals": {
+        "headings": [
+          "Learn about using Microsoft Purview Data Loss Prevention to protect interactions with Microsoft 365 Copilot and Copilot Chat",
+          "In this article",
+          "Licensing",
+          "Permissions",
+          "Block sensitive information types in web search",
+          "Block SITs in web search use case example",
+          "Block sensitive information types in prompts",
+          "Block SITs in prompts use case example",
+          "Block files and emails with sensitivity labels from being processed",
+          "Block items with sensitivity labels example use case",
+          "Coverage of email and file content",
+          "Block external email from being processed (preview)",
+          "Block external email use case example",
+          "Files uploaded in prompts",
+          "Availability",
+          "Admin units",
+          "Supported conditions and actions",
+          "Related content",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [
+          "Block external email from being processed (preview)"
+        ],
+        "status_phrases_present": [
+          "in preview",
+          "rolling out"
+        ],
+        "heading_count": 20,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-07T18:32:02Z",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
+      "matrix_rows": [
+        1,
+        2,
+        3,
+        5
+      ]
+    },
+    "defender-ai-threat-protection": {
+      "ok": true,
+      "fingerprint": "1f11f39c7ed946990ca95f353056249ed1ca0d18699d691f557b342881b8081f",
+      "signals": {
+        "headings": [
+          "AI threat protection in Microsoft Defender for Cloud",
+          "Defender XDR integration",
+          "Availability",
+          "Related content"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "generally available",
+          "release state"
+        ],
+        "heading_count": 4,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-07T18:32:02Z",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
+      "matrix_rows": [
+        4
+      ]
+    },
+    "defender-release-notes": {
+      "ok": true,
+      "fingerprint": "f1a4971da4ef47aa82b54bce8047870a8e879887017db39ca859648612b5fb93",
+      "signals": {
+        "headings": [
+          "AI model security for Azure Machine Learning (Preview)",
+          "Threat protection for AI agents (Preview)"
+        ],
+        "preview_qualified_headings": [
+          "AI model security for Azure Machine Learning (Preview)",
+          "Threat protection for AI agents (Preview)"
+        ],
+        "status_phrases_present": [
+          "deprecated",
+          "generally available",
+          "in preview",
+          "public preview",
+          "rolling out"
+        ],
+        "heading_count": 2,
+        "relevance_filtered": true
+      },
+      "checked_at": "2026-08-07T18:32:02Z",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
+      "matrix_rows": [
+        4
+      ]
+    },
+    "defender-release-notes-archive": {
+      "ok": true,
+      "fingerprint": "9b321d5ef268b2a6f166ea228033313b6e3e139f93dab7034e216868aacc7aca",
+      "signals": {
+        "headings": [
+          "Discover Azure AI Foundry agents in your environment (Preview)",
+          "General availability of AI security posture management in GCP Vertex",
+          "General Availability for Defender for AI Services",
+          "General Availability Data and AI security dashboard",
+          "AI Posture Management in GCP Vertex AI (Preview)",
+          "Data and AI security dashboard (Preview)",
+          "Permissions added to GCP connector to support AI platforms",
+          "AI security posture management is now generally available (GA)",
+          "Preview: AI multicloud security posture management",
+          "Limited preview: Threat protection for AI workloads in Azure"
+        ],
+        "preview_qualified_headings": [
+          "AI Posture Management in GCP Vertex AI (Preview)",
+          "Data and AI security dashboard (Preview)",
+          "Discover Azure AI Foundry agents in your environment (Preview)"
+        ],
+        "status_phrases_present": [
+          "deprecated",
+          "generally available",
+          "in preview",
+          "launched",
+          "public preview",
+          "retired",
+          "rolling out"
+        ],
+        "heading_count": 10,
+        "relevance_filtered": true
+      },
+      "checked_at": "2026-08-07T18:32:02Z",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
+      "matrix_rows": [
+        4
+      ]
+    },
+    "m365-roadmap-548671": {
+      "ok": true,
+      "fingerprint": "f804a666ca5a18a92e5a901ab1300132d5ec3fffc124c4f7304a7036059e4706",
+      "signals": {
+        "feature_id": "548671",
+        "title": "Microsoft Purview: Data Loss Prevention- Data Loss Prevention to safeguard sensitive web search in Microsoft 356 Copilot and Copilot Chat",
+        "status": "Launched",
+        "modified": "2026-06-12T22:00:47",
+        "tags": [
+          "{'tagName': 'General Availability'}",
+          "{'tagName': 'Microsoft Purview'}",
+          "{'tagName': 'Preview'}",
+          "{'tagName': 'Web'}",
+          "{'tagName': 'Worldwide (Standard Multi-Tenant)'}"
+        ]
+      },
+      "checked_at": "2026-08-07T18:32:02Z",
+      "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
+      "matrix_rows": [
+        2
+      ]
+    }
+  }
+}
