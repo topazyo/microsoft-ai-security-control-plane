@@ -87,10 +87,12 @@ jobs:
           path: evidence
 
       - name: Adjudicate
-        uses: anthropics/claude-code-action@v1
+        # Pinned to a commit SHA, not a mutable tag: a tag can be repointed at
+        # new code, and this step holds an API key and write permissions.
+        # 7ff6806 = tag v1 as of 2026-08-08. Re-pin deliberately when upgrading.
+        uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8 # v1
         with:
-          # Rotate this secret on the usual cadence; it is never echoed. Pin this
-          # action to a commit SHA before enabling the workflow on a public repo.
+          # Rotate this secret on the usual cadence; it is never echoed.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # The adjudicator is denied network tools by construction: it reasons
