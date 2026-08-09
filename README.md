@@ -18,7 +18,7 @@ The release status of Microsoft's AI-security capabilities is scattered across M
 **In scope:**
 
 - A capability-status matrix for the Microsoft AI-security stack — Microsoft Entra, Microsoft Purview, Microsoft Defender XDR / Defender for Cloud, Microsoft Sentinel, and GitHub — one row per capability.
-- An item-level framework cross-walk (OWASP LLM 2025, MITRE ATLAS, NIST AI 600-1, CSA AICM), versioned **"v0.1, expanding."**
+- An item-level framework cross-walk (OWASP LLM 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM), versioned **"v0.1, expanding."**
 - A practitioner status-verification checklist and a "how to read status" guide.
 
 **Out of scope:**
@@ -76,7 +76,7 @@ Start with [`matrix/capability-status-matrix.md`](matrix/capability-status-matri
 
 ## The cross-walk is synthesis, not Microsoft's mapping
 
-[`crosswalk/framework-crosswalk.md`](crosswalk/framework-crosswalk.md) maps each Microsoft control to specific framework items — OWASP LLM 2025 item IDs, MITRE ATLAS technique IDs, NIST AI 600-1 subcategories, CSA AICM (versioned) — at item level, never category-to-product. It is the **author's interpretive synthesis**, versioned "v0.1, expanding," and is not an official mapping by Microsoft, OWASP, MITRE, NIST, or CSA.
+[`crosswalk/framework-crosswalk.md`](crosswalk/framework-crosswalk.md) maps each Microsoft control to specific framework items — OWASP LLM 2026 item IDs, MITRE ATLAS technique IDs, NIST AI 600-1 subcategories, CSA AICM (versioned) — at item level, never category-to-product. It is the **author's interpretive synthesis**, versioned "v0.1, expanding," and is not an official mapping by Microsoft, OWASP, MITRE, NIST, or CSA.
 
 ## How rows are verified
 
