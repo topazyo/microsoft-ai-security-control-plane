@@ -10,7 +10,7 @@ This repository is an independent, community-maintained reference. It is **not**
 
 ## The framework cross-walk is interpretive synthesis
 
-The mappings in `crosswalk/framework-crosswalk.md` (Microsoft controls → OWASP LLM Top 10 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM) are the **author's synthesis, versioned "v0.1, expanding"**. They are **not** Microsoft's official mapping, and not an official mapping by OWASP, MITRE, NIST, or CSA. Use them as a starting point for your own analysis, not as an authoritative compliance assertion.
+The mappings in `crosswalk/framework-crosswalk.md` (Microsoft controls → OWASP LLM Top 10 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM) are the **author's synthesis, versioned "v0.2"**. They are **not** Microsoft's official mapping, and not an official mapping by OWASP, MITRE, NIST, or CSA. Use them as a starting point for your own analysis, not as an authoritative compliance assertion.
 
 ## Sources and confidentiality
 
