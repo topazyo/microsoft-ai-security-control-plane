@@ -180,6 +180,15 @@
       "note": "The newer agent-identity surface, distinct from workload identities. Source of row 11's 'aren't currently supported' list, the API-key bypass limit, and the custom-security-attribute targeting that this repository's checklist had previously attributed to workload identities. Watched because the agent path is where preview qualifiers are currently moving."
     },
     {
+      "id": "entra-ca-target-agent-identities",
+      "title": "Target agent identities with Conditional Access",
+      "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
+      "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
+      "mode": "html",
+      "matrix_rows": [11],
+      "note": "Added after an independent re-verification pass found row 11's 'agent users ... currently in Preview' quote attributed to the Conditional Access for agents article, which does not contain it -- this page does. Registered so the citation is reachable from the row's own sources, which is the same class of defect sources.json:89 records for the DSPM considerations page. Watched because the agent-targeting options are where preview qualifiers are currently moving, and because this page and the users-and-groups article currently disagree about which of those options are in preview."
+    },
+    {
       "id": "mitre-atlas-dataset",
       "title": "MITRE ATLAS distributed dataset (ATLAS.yaml)",
       "url": "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml",
