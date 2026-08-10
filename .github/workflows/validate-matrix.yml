@@ -11,15 +11,28 @@
 # requests must never receive repository secrets. This job needs none.
 name: Validate matrix
 
+# The path filters below deliberately cover the prose files as well as the
+# matrix. check_confidentiality scans every changed .md/.json file, so a
+# scaffolding- or README-only pull request that did not trigger this workflow
+# received no confidentiality scan at all - the check was absent rather than
+# green, which is the more dangerous of the two.
 on:
   pull_request:
     paths:
       - 'matrix/**'
       - 'crosswalk/**'
       - 'checklists/**'
+      - 'docs/**'
       - 'CHANGELOG.md'
+      - 'README.md'
+      - 'disclaimer.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE*'
       - '.github/watch-state/**'
       - '.github/workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
       - 'scripts/**'
   push:
     branches: [main]
@@ -27,7 +40,16 @@ on:
       - 'matrix/**'
       - 'crosswalk/**'
       - 'checklists/**'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'disclaimer.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE*'
       - '.github/workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
       - 'scripts/**'
   workflow_dispatch:
 

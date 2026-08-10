@@ -59,20 +59,36 @@ Prompt injection (direct/UPIA and indirect/XPIA), sensitive-data leakage into an
 microsoft-ai-security-control-plane/
 ├── README.md
 ├── CHANGELOG.md
+├── CONTRIBUTING.md                        # the contribution rule; atomic row PRs; running the validators
+├── SECURITY.md                            # what to report here vs to MSRC; no-secrets policy
+├── LICENSE                                # MIT — covers scripts/ and .github/workflows/
+├── LICENSE-CONTENT                        # CC BY 4.0 — covers the documentation content
 ├── disclaimer.md
 ├── matrix/
 │   └── capability-status-matrix.md        # the spine: capability → status → source + last-verified date
 ├── crosswalk/
 │   └── framework-crosswalk.md             # item-level; v0.1, expanding; author synthesis
 ├── checklists/
-│   └── capability-status-verification.md  # the 8-group practitioner checklist
-└── docs/
-    └── how-to-read-status.md              # GA vs Preview vs Roadmap; sourcing + verification methodology
+│   └── capability-status-verification.md  # the 9-group practitioner checklist
+├── docs/
+│   ├── how-to-read-status.md              # GA vs Preview vs Roadmap; sourcing + verification methodology
+│   ├── agent-cadence.md                   # the tiered automated refresh: what is automated, what stays human
+│   └── scope-and-out-of-scope.md          # what belongs here, what does not, and where it belongs instead
+├── scripts/                               # standard-library only; no third-party dependency
+│   ├── watch_sources.py                   # tier D1: deterministic source watcher (no model, no judgement)
+│   ├── stale_guard.py                     # tier D4: staleness guard over the recorded last-verified dates
+│   ├── validate_bot_pr.py                 # the deterministic gate: sourcing, labelling, confidentiality
+│   └── changelog_entry.py                 # appends a refresh record in the existing format
+└── .github/
+    ├── workflows/                         # daily source watch, monthly refresh, weekly stale guard, validate gate
+    ├── watch-state/                       # sources.json (pinned source registry) + fingerprints.json (baseline)
+    ├── ISSUE_TEMPLATE/                    # new row proposal, status correction, tenant verification
+    └── pull_request_template.md
 ```
 
 ## Quick start
 
-Start with [`matrix/capability-status-matrix.md`](matrix/capability-status-matrix.md). The three **DLP-for-Copilot rows are the worked example of why status matters**: one feature name, three sub-capabilities, three release schedules — and (as of the current verification date) still not one shared status.
+Start with [`matrix/capability-status-matrix.md`](matrix/capability-status-matrix.md). The four **DLP-for-Copilot rows are the worked example of why status matters**: one feature name, four sub-capabilities, four release schedules — and (as of the current verification date) still not one shared status.
 
 ## The cross-walk is synthesis, not Microsoft's mapping
 
@@ -96,4 +112,6 @@ Monthly refresh against the Microsoft Learn "What's new" pages and the Message C
 
 ## License & contributing
 
-A permissive open license and `CONTRIBUTING.md` land with the public release (v0.1.1 scaffolding). The contribution rule is already fixed: **every proposed or changed row must include a primary-source URL and a last-verified date**, use a status label from the legend, and keep to public, synthetic-only content.
+**Dual-licensed.** The automation (`scripts/`, `.github/workflows/`) is **MIT** — see [`LICENSE`](LICENSE). The documentation content (the matrix, the cross-walk, the checklists, `docs/`, and the prose files) is **CC BY 4.0** — see [`LICENSE-CONTENT`](LICENSE-CONTENT). CC BY keeps the cross-walk's author synthesis attributable as it is reused; MIT keeps the automation reusable without an attribution obligation attaching to code. Third-party material quoted here — Microsoft documentation text, and OWASP / MITRE ATLAS / NIST / CSA identifiers and titles — remains the property of its owners and is covered by neither license; see [`LICENSE-CONTENT`](LICENSE-CONTENT) and [`disclaimer.md`](disclaimer.md).
+
+**Contributing:** see [`CONTRIBUTING.md`](CONTRIBUTING.md). The contribution rule is fixed: **every proposed or changed row must include a primary-source URL and a last-verified date**, use a status label from the legend, and keep to public, synthetic-only content. Where Microsoft's own sources conflict, the row is labelled **Requires further validation** rather than resolved by judgement. Security and confidentiality reports: [`SECURITY.md`](SECURITY.md).
