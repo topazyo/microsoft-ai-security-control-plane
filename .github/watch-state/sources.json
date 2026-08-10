@@ -50,6 +50,71 @@
       "feature_id": 548671,
       "matrix_rows": [2],
       "note": "The per-feature endpoint (/api/v1/m365/features/<id>) returned HTTP 404 on 2026-08-07; the collection endpoint returned HTTP 200 and contains the feature. The watcher fetches the collection and selects by feature_id."
+    },
+    {
+      "id": "purview-dspm-considerations",
+      "title": "Considerations for deploying Microsoft Purview Data Security Posture Management",
+      "url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
+      "mode": "html",
+      "matrix_rows": [6, 7],
+      "note": "The current (non-classic) DSPM considerations page. Carries the prerequisite list and the only licensing sentence Microsoft offers for the current version, which names no SKU and defers to the Purview service description. Backing docs repository MicrosoftDocs/Purview-pr is not public (raw fetch returned HTTP 404 on 2026-08-10), so HTML fingerprinting is required."
+    },
+    {
+      "id": "purview-service-description",
+      "title": "Microsoft Purview service description",
+      "url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
+      "cite_url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
+      "mode": "html",
+      "matrix_rows": [6],
+      "relevance_filter": ["Data Security Posture Management", "\\bDSPM\\b", "Which users need a license"],
+      "note": "The other end of row 6's circular licensing reference: the DSPM page points here for licensing, and this page points back at the DSPM article. Watched so that either side gaining an actual SKU statement is detected. relevance_filter keeps the fingerprint from churning on the rest of this large, multi-solution service description."
+    },
+    {
+      "id": "purview-dspm-for-ai-classic",
+      "title": "Learn about Data Security Posture Management for AI (classic)",
+      "url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
+      "mode": "html",
+      "matrix_rows": [7],
+      "note": "Documents the default-posture behaviour row 7 records (audit mode only; blocking policy shipped in test mode). Learn marks this article the classic version, replaced by a new one. Watched precisely because a classic page is where a silent behavioural divergence would appear."
+    },
+    {
+      "id": "purview-ai-interactions",
+      "title": "Microsoft Purview data security and compliance protections for AI",
+      "url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
+      "mode": "html",
+      "matrix_rows": [7],
+      "note": "Carries row 7's self-contradiction: this single page calls the new DSPM both 'the preview version' and 'the current version of DSPM'. Watched so that the contradiction being resolved is detected -- that resolution is what would let row 7 leave Requires further validation, after in-tenant confirmation by a human."
+    },
+    {
+      "id": "mdca-cloud-app-catalog",
+      "title": "Cloud app catalog and risk scores (Microsoft Defender for Cloud Apps)",
+      "url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
+      "mode": "html",
+      "matrix_rows": [8],
+      "note": "The only Learn page carrying all of: the catalog size figure, the Generative AI category definition, and the adjacent AI - MCP Server and AI - Model Provider categories. There is no Learn article dedicated to generative-AI app discovery, so this page is the whole primary source for row 8's capability claim."
+    },
+    {
+      "id": "mdca-discovered-apps",
+      "title": "Discovered apps (Microsoft Defender for Cloud Apps)",
+      "url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
+      "mode": "html",
+      "matrix_rows": [8],
+      "note": "Source of row 8's platform-coverage sentence ('Supported apps include Windows and macOS apps'). Watched alongside the catalog page because the macOS claim is contradicted by the Defender for Endpoint integration article, and a change on either side settles that."
+    },
+    {
+      "id": "sentinel-data-connectors-reference",
+      "title": "Find your Microsoft Sentinel data connector",
+      "url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
+      "mode": "html",
+      "matrix_rows": [9],
+      "relevance_filter": ["Copilot", "data connectors are currently in Preview"],
+      "note": "No dedicated Learn page exists for a Sentinel Microsoft Copilot connector -- six candidate URLs returned HTTP 404 on 2026-08-10 and the solutions catalog contains no occurrence of 'Copilot' -- so row 9 rests on this aggregate reference page's collapsible entry. relevance_filter is essential: the page is ~1.7 MB and lists hundreds of connectors, so an unfiltered fingerprint would change on nearly every run for entries that cannot affect any matrix row. The filter deliberately also matches the page-level 'currently in Preview' notice, which is one half of row 9's conflict."
     }
   ],
   "human_only_sources": [
