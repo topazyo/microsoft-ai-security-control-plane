@@ -109,23 +109,27 @@ jobs:
         run: |
           echo "::warning::Monthly consolidation did NOT run - no ANTHROPIC_API_KEY is configured. Run tier D3 locally; see docs/agent-cadence.md."
           {
-            echo '## Monthly consolidation deferred to a local run'
-            echo
-            echo 'No `ANTHROPIC_API_KEY` is configured, so tier D3 did not run in CI.'
-            echo 'This run is green because nothing failed - the consolidation is queued for a'
-            echo 'human, not skipped.'
-            echo
-            echo '**Nothing was written to the repository.** The `--update-baseline` write above'
-            echo 'exists only on this runner and is discarded with it, so `fingerprints.json` is'
-            echo 'unchanged and the next run re-detects the same state.'
+            cat <<'SUMMARY'
+          ## Monthly consolidation deferred to a local run
+
+          No `ANTHROPIC_API_KEY` is configured, so tier D3 did not run in CI.
+          This run is green because nothing failed - the consolidation is queued for a
+          human, not skipped.
+
+          **Nothing was written to the repository.** The `--update-baseline` write above
+          exists only on this runner and is discarded with it, so `fingerprints.json` is
+          unchanged and the next run re-detects the same state.
+          SUMMARY
             if [ -n "${FAILED_SOURCES}" ]; then
-              echo
-              echo "**Unreachable this run:** \`${FAILED_SOURCES}\` - do not advance those rows' dates."
+              printf '\n**Unreachable this run:** %s - do not advance those rows dates.\n' "${FAILED_SOURCES}"
             fi
-            echo
-            echo '**What to do:** follow *Running tiers D2 and D3 locally* in `docs/agent-cadence.md`.'
-            echo 'Advance a last-verified date only where the source was fetched successfully, and'
-            echo 'write exactly one CHANGELOG heading for this calendar month.'
+            cat <<'SUMMARY'
+
+          **What to do:** follow *Running tiers D2 and D3 locally* in
+          `docs/agent-cadence.md`. Advance a last-verified date only where the source
+          was fetched successfully, and write exactly one CHANGELOG heading for this
+          calendar month.
+          SUMMARY
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Escalate rows needing in-tenant confirmation
