@@ -22,9 +22,10 @@
 
 **Group 3 — DSPM for AI**
 
-- [ ] Licensing prerequisite recorded per capability (e.g. M365 E5 / E5 Compliance) with a Learn citation.
-- [ ] Third-party AI-site monitoring dependency noted (device onboarding + Purview browser extension).
-- [ ] Default posture recorded as **audit/monitor**, not "blocks by default"; enforcement noted as configuration + endpoint onboarding.
+- [ ] Licensing prerequisite recorded per capability with a Learn citation — **and if you cannot find one, say so rather than supplying a plausible SKU.** As verified **2026-08-10** (matrix row 6) Microsoft's references are **circular**: the DSPM considerations page names no SKU and defers to the Purview service description, which defers back to the DSPM article. Do **not** record "M365 E5 / E5 Compliance" for DSPM for AI from memory or from a comparison site — that expectation is currently **unverified**. What Learn does state specifically: a Microsoft 365 Copilot license for the Copilot/agent scope, the enterprise version of Purview data governance for the Fabric/Security Copilot scope, and pay-as-you-go billing for other AI apps.
+- [ ] Third-party AI-site monitoring dependency noted (device onboarding + Purview browser extension). As verified **2026-08-10**: the browser extension is deployed to **Windows** users, and endpoint DLP enforcement against AI sites is scoped to **Windows computers onboarded to Microsoft Purview**.
+- [ ] Default posture recorded as **audit/monitor**, not "blocks by default"; enforcement noted as configuration + endpoint onboarding. Confirmed verbatim **2026-08-10** (matrix row 7): discovery policies cover all users "in audit mode only", the one blocking policy ships "in test mode", policies are one-click **activated** rather than on by default, and only the weekly SharePoint risk assessment runs with "No activation needed".
+- [ ] **Which DSPM version the documentation describes is checked before any claim is carried over.** As verified **2026-08-10** the "DSPM for AI" articles are marked **classic** ("now replaced with a new version"), while a single Learn page calls the replacement both "the preview version" and "the current version of DSPM". Matrix rows 6 and 7 are therefore **Requires further validation** — confirm which version your tenant runs.
 
 **Group 4 — Defender product boundaries & detection surface**
 
@@ -35,7 +36,9 @@
 
 **Group 5 — Sentinel**
 
-- [ ] Microsoft Copilot connector for Sentinel: current status verified against Learn (historically Public Preview — not GA); destination table name confirmed against Learn.
+- [ ] Microsoft Copilot connector for Sentinel: current status verified against Learn (historically Public Preview — not GA); destination table name confirmed against Learn. As verified **2026-08-10** (matrix row 9) the status is **Requires further validation**, because the reference page **contradicts itself**: a page-level notice says all Sentinel data connectors "are currently in Preview", while the same page suffixes only *some* entries "(Preview)" and the Microsoft Copilot entry carries no qualifier and no release-state sentence at all. **Do not record this connector as GA.** The destination table is named CopilotActivity, stated in prose on that page.
+- [ ] **Connector naming checked before the row is matched to a Microsoft 365 Copilot control.** As verified 2026-08-10 the string "Microsoft 365 Copilot" does not appear on the page; the connector is named "Microsoft Copilot" and spans **Security Copilot** as well, so the scope is broader than M365 Copilot alone.
+- [ ] No dedicated Learn page for this connector is assumed to exist — as verified 2026-08-10, six candidate URLs returned 404 and the solutions catalog contains no occurrence of "Copilot"; the aggregate data-connectors reference page is the only primary source.
 - [ ] Any detection logic on the connector's schema marked "verified in own workspace" before publication.
 
 **Group 6 — Entra Conditional Access for AI identities**
@@ -45,7 +48,9 @@
 
 **Group 7 — Shadow AI & GitHub/MCP governance**
 
-- [ ] Defender for Cloud Apps gen-AI discovery recorded for **Windows and macOS**, citing the current **Microsoft Learn catalog figure** (with a last-verified date) — not a marketing figure.
+- [ ] Defender for Cloud Apps gen-AI discovery recorded with the current **Microsoft Learn catalog figure** (with a last-verified date) — not a marketing figure. As verified **2026-08-10** (matrix row 8) Learn states "over 31,000 discoverable cloud apps" and defines **Generative AI** as a first-class catalog category, with adjacent **AI – MCP Server** and **AI – Model Provider** categories.
+- [ ] **Platform coverage stated carefully: Windows is unambiguous, macOS is contradicted by the source.** As verified 2026-08-10, one Learn page says "Supported apps include Windows and macOS apps" and the integration prerequisites list macOS, but the same integration page's "How it works" describes the agent running on **Windows** and discovery "across the Windows devices on your network". Confirm macOS in your own tenant before claiming it. Also note Learn's macOS caveat that "UDP protocols aren't covered for macOS support".
+- [ ] **No "shadow AI" feature page is assumed to exist.** As verified 2026-08-10 the phrase does not appear anywhere in this product's documentation and there is no Learn article dedicated to gen-AI app discovery — the evidence is the catalog category table alone. Also record what discovery cannot see: per Learn it "can't discover apps that aren't in the catalog."
 - [ ] GitHub Copilot policy recorded as configurable at **enterprise and org** levels (more-restrictive precedence wins).
 - [ ] GitHub **MCP registry governance documented as a gap, not a delivered control** (VS Code-centric; bypassable via local stdio servers, workspace/user `mcp.json`, other clients).
 
@@ -71,4 +76,4 @@
 
 ---
 
-*Version 1.2 — Last validated: 2026-08-07 — against Microsoft Learn + the public Microsoft 365 Roadmap as of the verification date. Group 8 was separately re-based on the OWASP Top 10 for LLM Applications **2026 edition** on 2026-08-09; that date covers the OWASP items only and deliberately does **not** advance the Microsoft-source validation date above, which was not re-run. Groups 3, 5, 6, and 7 describe verification steps for capabilities whose matrix rows land in v0.1.1; their statuses are not asserted here. Group 9 covers the automated refresh described in [`docs/agent-cadence.md`](../docs/agent-cadence.md).*
+*Version 1.3 — Last validated: 2026-08-10 — against Microsoft Learn + the public Microsoft 365 Roadmap as of the verification date. **Scope of this stamp:** the 2026-08-10 pass re-read Microsoft Learn for the capabilities behind matrix rows 6–9 only, so the dated bullets in Groups 3, 5 and 7 carry that date; Groups 1, 2, 4, 6, 8 and 9 were **not** re-run and their content still rests on the dates recorded in their own bullets. Group 8 was separately re-based on the OWASP Top 10 for LLM Applications **2026 edition** on 2026-08-09; that date covers the OWASP items only. **Shipped in v0.1.1:** Group 3's DSPM for AI rows (matrix 6 and 7, both **Requires further validation**), Group 7's Defender for Cloud Apps gen-AI discovery (matrix 8, **GA**), and Group 5's Sentinel Microsoft Copilot connector (matrix 9, **Requires further validation**). **Deferred to v0.1.2, with reasons:** Group 6's Entra Conditional Access row and **Group 4's Defender XDR advanced-hunting row** (not reached in the v0.1.1 verification pass — no status asserted), and Group 7's GitHub Copilot policy row (its primary source is outside the validator's allowed source hosts). Group 7 therefore spans a shipped row and a deferred one. Group 9 covers the automated refresh described in [`docs/agent-cadence.md`](../docs/agent-cadence.md).*
