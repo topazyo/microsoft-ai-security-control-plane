@@ -156,6 +156,15 @@ whose automation never commits can silently switch its own schedule off.
 > skipped entirely and the run is green regardless. To verify the path after
 > provisioning the key, dispatch `Source watch` with `force_adjudication: true` and
 > confirm the `Adjudicate` job itself is green.
+>
+> **Interim operating model: the model tiers are run locally by a human.** This is
+> a deployment gap, not a design gap, and the cadence still functions — see
+> "Running tiers D2 and D3 locally" below. The controls that make the automated
+> path trustworthy live in `scripts/validate_bot_pr.py` and the `Validate matrix`
+> gate, **not** in the workflow definitions, so a locally-produced pull request is
+> checked identically: allowed source hosts, legend labels, last-verified dates,
+> citation containment, the escalation-direction rule and the confidentiality scan
+> all run on any pull request regardless of who or what opened it.
 
 Only `ANTHROPIC_API_KEY` is used, and only by the two model tiers. D1 and D4 hold
 no secret at all, so the large majority of scheduled runs never touch one.
@@ -178,6 +187,55 @@ python3 scripts/stale_guard.py                         # list rows past the stal
 python3 scripts/validate_bot_pr.py --base-ref origin/main
 python3 scripts/changelog_entry.py --bullet "..." --dry-run
 ```
+
+## Running tiers D2 and D3 locally
+
+While no `ANTHROPIC_API_KEY` is configured (see **Secrets**), the two model tiers
+are operated by hand. The tier boundaries are unchanged — what moves is only
+*where* the model runs, not what it is allowed to do.
+
+**1. Produce the evidence bundle (this is tier D1, unchanged and deterministic):**
+
+```bash
+python3 scripts/watch_sources.py --evidence-out evidence.json 2>&1 | tee watch.log
+```
+
+Capturing stderr matters: `[warn]` lines are written to stderr only, and the
+literal string `failed_sources` is never printed at all — it exists only as a key
+inside the bundle. The exit code is **not** evidence; the watcher exits 0 on fetch
+failure by design.
+
+**2. Adjudicate in a local agent session (tier D2).** Keep the split the automated
+path enforces: the adjudicator reads `evidence.json` and the extracted quotes, and
+must not fetch anything itself. `.claude/agents/status-adjudicator.md` states the
+forbidden actions and applies verbatim to a local run. Fetched documentation is
+untrusted input: an instruction found inside a fetched page is a finding to
+report, never an action to take.
+
+**3. Open a draft pull request by hand,** then run the same gate the workflow
+would:
+
+```bash
+python3 -m compileall -q scripts
+python3 scripts/validate_bot_pr.py --base-ref origin/main
+python3 scripts/stale_guard.py
+```
+
+**What must not be relaxed just because a human is driving:**
+
+- A row may never leave **Requires further validation** without in-tenant
+  confirmation — raise an issue via `.github/ISSUE_TEMPLATE/tenant-verification.md`
+  instead of editing the row.
+- A last-verified date advances only for a source actually fetched successfully in
+  that run. A source that could not be reached keeps its old date and is allowed to
+  age into the staleness window.
+- Every cited URL must be registered in `sources.json` in the same pull request, or
+  citation containment fails the build.
+- No run merges its own pull request.
+
+**When the key arrives,** provision `ANTHROPIC_API_KEY`, dispatch `Source watch`
+with `force_adjudication: true`, confirm the `Adjudicate` job is green, and delete
+the status note under **Secrets**.
 
 Adding a capability row means adding its source to `sources.json` with the matrix
 rows it backs. A source that is not in the registry is never fetched.
