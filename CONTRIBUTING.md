@@ -129,8 +129,11 @@ perfectly reasonable:
   cell. Runnable detections are out of scope by design and belong in a separate
   detection-pack repository.
 
-Also avoid four-component version numbers (`1.2.3.4`) in content files — the
-confidentiality check reads them as IP addresses. Three components are fine.
+Also avoid **four-component version numbers** in content files — the
+confidentiality check reads any four dot-separated number groups as an IP
+address, and its "that's a version string, not an IP" guard never fires. Three
+components are fine. (Writing an example of one here would fail the build; that
+is how the guard was confirmed dead.)
 
 ## How the automated cadence interacts with human pull requests
 
