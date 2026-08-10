@@ -36,8 +36,24 @@ jobs:
       changed: ${{ steps.watch.outputs.changed }}
       changed_sources: ${{ steps.watch.outputs.changed_sources }}
       failed_sources: ${{ steps.watch.outputs.failed_sources }}
+      has_key: ${{ steps.creds.outputs.present }}
     steps:
       - uses: actions/checkout@v7
+
+      # The `secrets` context is not available in a job-level `if:`, so key
+      # presence is resolved here and threaded through as a job output. Only the
+      # boolean is emitted - the key itself is never printed, and passing it via
+      # env rather than an expression keeps it out of the rendered command line.
+      - name: Check for adjudication credentials
+        id: creds
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY}" ]; then
+            echo 'present=true' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'present=false' >> "${GITHUB_OUTPUT}"
+          fi
 
       - uses: actions/setup-python@v7
         with:
@@ -64,10 +80,46 @@ jobs:
           echo "Baselines were preserved and no last-verified date was advanced."
           echo "These rows will age into the staleness window and be raised by the stale guard."
 
+  # Deferred rather than failed: while no ANTHROPIC_API_KEY is configured, tier D2
+  # is operated by hand (docs/agent-cadence.md, "Running tiers D2 and D3
+  # locally"). A red run every time a source changes would say "this repository is
+  # broken" when the accurate statement is "judgement is queued for a human". The
+  # change is still announced loudly - it is a warning annotation and a run-summary
+  # entry, not a silent pass.
+  adjudication-deferred:
+    name: Adjudication deferred to a local run
+    needs: detect
+    if: (needs.detect.outputs.changed == 'true' || inputs.force_adjudication) && needs.detect.outputs.has_key != 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Announce that judgement is queued for a human
+        env:
+          CHANGED_SOURCES: ${{ needs.detect.outputs.changed_sources }}
+        run: |
+          echo "::warning::Status-relevant change detected in: ${CHANGED_SOURCES:-none reported}. Tier D2 adjudication did NOT run - no ANTHROPIC_API_KEY is configured. Run it locally; see docs/agent-cadence.md."
+          {
+            echo '## Adjudication deferred to a local run'
+            echo
+            echo "Changed sources this run: \`${CHANGED_SOURCES:-none reported}\`"
+            echo
+            echo 'No `ANTHROPIC_API_KEY` is configured, so tier D2 did not run in CI.'
+            echo 'This run is green because nothing failed - judgement is queued for a human, not skipped.'
+            echo
+            echo '**What to do:** follow *Running tiers D2 and D3 locally* in `docs/agent-cadence.md`.'
+            echo 'The evidence bundle for this run is attached to the `detect` job as the'
+            echo '`evidence-bundle` artifact - download it and adjudicate from it rather than'
+            echo 're-fetching, so the D1/D2 split is preserved.'
+            echo
+            echo 'Every control still applies: the resulting pull request is checked by'
+            echo '`validate_bot_pr.py` and the `Validate matrix` gate exactly as an automated one'
+            echo 'would be.'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   adjudicate:
     name: Adjudicate detected change
     needs: detect
-    if: needs.detect.outputs.changed == 'true' || inputs.force_adjudication
+    if: (needs.detect.outputs.changed == 'true' || inputs.force_adjudication) && needs.detect.outputs.has_key == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
