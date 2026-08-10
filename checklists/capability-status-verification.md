@@ -8,7 +8,7 @@
 **Group 1 — Status hygiene (every capability)**
 
 - [ ] Explicit status label: GA / Public Preview / Roadmap / Requires further validation.
-- [ ] Primary-source URL (Microsoft Learn or Message Center) recorded next to it.
+- [ ] Primary-source URL (Microsoft Learn or the public Microsoft 365 Roadmap) recorded next to it; a Message Center post has **no public URL** — record the MC ID only, as a tenant-side tracking reference, never as the row's primary source (Group 9; [`docs/how-to-read-status.md`](../docs/how-to-read-status.md)).
 - [ ] "Last verified" date within the current monthly window.
 - [ ] Status is never sourced from a launch/marketing blog as the source of truth (Tech Community is official-adjacent only).
 
