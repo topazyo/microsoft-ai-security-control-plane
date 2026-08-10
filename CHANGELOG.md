@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 **Four deferred rows land, two subsystems close long-standing blind spots, and four of this repository's own published claims are corrected.** The matrix grows from 9 rows to 13, the cross-walk graduates to **v0.2** with every cell resolved, the source registry gains framework-edition watching — the gap that let the OWASP 2026 edition go unnoticed — and the planned-rows backlog carried since v0.1.0 is fully discharged.
 
-The date above is the verification date for every row in this release. It is not a tag date; see "How rows are verified".
+The date above is both the verification date for every row in this release and the date the `v0.1.2` tag was cut — they coincide because the release was cut on the day the verification pass ran. **Do not read that as a rule.** In this repository a heading date means the date the sources were actually re-read; when a release is tagged later than its verification pass, the two will differ and the heading follows the tag while each row keeps its own last-verified date. See "How rows are verified".
 
 ### Added
 
@@ -47,7 +47,7 @@ An independent pass re-fetched all eleven URLs cited by the new rows and tested 
 - **The planned-rows list is empty.** That is a statement about the backlog, not about coverage: Microsoft's AI-security surface is far larger than thirteen rows. It means nothing is sitting half-verified. New rows arrive through the new-row proposal template, on the same terms as the existing ones.
 - **Row 13's client coverage is unverified here.** The page enumerating which clients support the enterprise settings file was not read on this pass, so "supported clients" is quoted rather than enumerated. Confirm it before relying on the allowlist's reach.
 - **Cadence tiers D2 and D3 still cannot run in CI.** No `ANTHROPIC_API_KEY` is configured. Both are gated on key presence and defer with a green run and a loud warning rather than failing red. A green scheduled `Source watch` is not evidence that adjudication works.
-- **In-tenant verification remains open** for rows 1, 2, 3, 5, 6, 7, 9 and 12, for macOS discovery on row 8, for row 10's hunting schema and columns, and for which of row 11's agent-targeting options are in preview — the users-and-groups article and the targeting how-to disagree on that.
+- **The in-tenant verification gate was closed by the maintainer on 2026-08-10**, covering rows 1, 2, 3, 5, 6, 7, 9, 12 and 13, macOS discovery on row 8, row 10's hunting schema and columns, and row 11's agent-targeting options. **No row status changed as a result, and that is not an oversight.** Closing the gate records that a human made the check; it is not itself evidence of what the check found. A row leaves **Requires further validation** only on a specific documented finding, cited and dated like any other — so rows 3, 6, 7, 9 and 12 hold their labels here, and would move only in a later pass that records what was observed and where. The four contested sub-questions those rows rest on are unchanged by this: Learn's own pages still disagree with themselves or each other on each one.
 - The 2026-08-07 stamps on matrix rows 1–5 and the NIST cross-walk row age out on **2026-09-07**.
 
 ## [0.1.1] — 2026-08-10
