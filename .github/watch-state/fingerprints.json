@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-10T03:31:16Z",
+  "updated_at": "2026-08-10T07:48:36Z",
   "sources": {
     "purview-dlp-copilot": {
       "ok": true,
@@ -37,7 +37,7 @@
         "heading_count": 20,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
       "matrix_rows": [
         1,
@@ -64,7 +64,7 @@
         "heading_count": 4,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
       "matrix_rows": [
         4
@@ -92,7 +92,7 @@
         "heading_count": 2,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
       "matrix_rows": [
         4
@@ -131,7 +131,7 @@
         "heading_count": 10,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
       "matrix_rows": [
         4
@@ -153,7 +153,7 @@
           "{'tagName': 'Worldwide (Standard Multi-Tenant)'}"
         ]
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
       "matrix_rows": [
         2
@@ -182,7 +182,7 @@
         "heading_count": 10,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
       "matrix_rows": [
         6,
@@ -202,7 +202,7 @@
         "heading_count": 2,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
       "matrix_rows": [
         6
@@ -227,7 +227,7 @@
         "heading_count": 6,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
       "matrix_rows": [
         7
@@ -257,7 +257,7 @@
         "heading_count": 11,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
       "matrix_rows": [
         7
@@ -292,7 +292,7 @@
         "heading_count": 18,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
       "matrix_rows": [
         7
@@ -322,7 +322,7 @@
         "heading_count": 13,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
       "matrix_rows": [
         8
@@ -354,7 +354,7 @@
         "heading_count": 13,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
       "matrix_rows": [
         8
@@ -373,11 +373,48 @@
         "heading_count": 0,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-10T03:31:16Z",
+      "checked_at": "2026-08-10T07:48:36Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
       "matrix_rows": [
         9
       ]
+    },
+    "mitre-atlas-dataset": {
+      "ok": true,
+      "fingerprint": "eab0d692b25c8bd8d77e48dbe8836f0d8496532f57686800baf35978a502804e",
+      "signals": {
+        "versions": [
+          "5.6.0"
+        ],
+        "version_count": 1,
+        "rejected_token_count": 0
+      },
+      "checked_at": "2026-08-10T07:48:36Z",
+      "cite_url": "https://atlas.mitre.org/",
+      "matrix_rows": []
+    },
+    "owasp-llm-top-10-edition": {
+      "ok": true,
+      "fingerprint": "f83d36eee849854c4d265f2639c9b6cb7ee3b870ba9c05b00cdadf646643d36a",
+      "signals": {
+        "versions": [
+          "LLM01:2025",
+          "LLM02:2025",
+          "LLM03:2025",
+          "LLM04:2025",
+          "LLM05:2025",
+          "LLM06:2025",
+          "LLM07:2025",
+          "LLM08:2025",
+          "LLM09:2025",
+          "LLM10:2025"
+        ],
+        "version_count": 10,
+        "rejected_token_count": 0
+      },
+      "checked_at": "2026-08-10T07:48:36Z",
+      "cite_url": "https://genai.owasp.org/llm-top-10/",
+      "matrix_rows": []
     }
   }
 }

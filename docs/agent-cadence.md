@@ -13,8 +13,11 @@ treated as stale."* This document describes the machinery that carries it out.
 Two facts about this repository shape everything below.
 
 **Retrieval is cheap; judgement is expensive and risky.** The complete watch
-surface is four pinned sources (`.github/watch-state/sources.json`) covering all
-matrix rows. Fetching them costs seconds and no tokens. What costs tokens — and
+surface is fifteen pinned sources (`.github/watch-state/sources.json`) covering
+every matrix row plus two framework editions. Re-derive that count from the
+registry rather than trusting this sentence — it described four sources for a
+release and a half after there were more.
+Fetching them costs seconds and no tokens. What costs tokens — and
 what can go wrong — is deciding what a change *means*. A fabricated status change
 carrying a plausible-looking URL would destroy the repository's entire premise,
 which is that status is verified rather than asserted.
@@ -60,7 +63,7 @@ that forms judgements cannot touch the outside world.
 pinned `actionlint` image, and its path filter includes `.github/workflows/**`,
 so a change that breaks the automation is caught by the automation.
 
-This separation is worth its complexity at four rows because it converts prose
+This separation is worth its complexity even at nine rows because it converts prose
 rules into mechanical invariants. "Never cite a source you did not read" is
 unenforceable as an instruction and trivially enforceable as a set-membership
 test: every primary-source URL in the matrix must appear in the evidence bundle's
@@ -229,8 +232,15 @@ python3 scripts/stale_guard.py
 - A last-verified date advances only for a source actually fetched successfully in
   that run. A source that could not be reached keeps its old date and is allowed to
   age into the staleness window.
-- Every cited URL must be registered in `sources.json` in the same pull request, or
-  citation containment fails the build.
+- Every **Microsoft Learn, public Roadmap or GitHub Docs** URL cited in
+  `matrix/capability-status-matrix.md` must be registered in `sources.json` in the
+  same pull request, or citation containment fails the build. State the scope
+  precisely, because the check is narrower than "every cited URL" and reading it
+  as broader is how an unchecked citation gets mistaken for a checked one:
+  `check_citation_containment` reads the **matrix file only**, and filters to URLs
+  matching `ALLOWED_SOURCE_HOSTS`. Citations in `crosswalk/` and `checklists/`,
+  and any URL on another host anywhere, are **not** covered by it — for those the
+  reviewer is the control.
 - No run merges its own pull request.
 
 **When the key arrives,** provision `ANTHROPIC_API_KEY`, dispatch `Source watch`
@@ -239,3 +249,44 @@ the status note under **Secrets**.
 
 Adding a capability row means adding its source to `sources.json` with the matrix
 rows it backs. A source that is not in the registry is never fetched.
+
+## Watching a framework edition
+
+A framework source is the one kind that backs no matrix row, and it needs its own
+handling in two ways.
+
+**It needs its own extraction mode.** `extract_signals` fingerprints headings,
+which headings carry a `(preview)` qualifier, and which of nine status phrases are
+present. None of those changes when a framework publishes a new edition or bumps a
+dataset version, so registering a framework source under `html` or `markdown`
+would produce a source that reports "unchanged" forever — worse than not
+registering it, because the registry would then claim coverage it does not have.
+That blind spot is exactly how the OWASP LLM Top 10 2026 edition went unnoticed
+here. `mode: "version"` instead regex-captures the version or edition tokens a
+source publishes and fingerprints that set.
+
+Three constraints, all enforced in code:
+
+- **Captures are bounded, not trusted.** Whatever a framework publishes is stored
+  verbatim in `fingerprints.json` and in the evidence bundle the adjudicator
+  reads, so only short version-shaped tokens survive the shape guard. A
+  four-component numeric version is rejected outright: it is indistinguishable
+  from an IPv4 address to the confidentiality scan that reads this file.
+- **A pattern that captures nothing is a failure, not a quiet success.** It
+  records `ok: false`, which surfaces as a `[warn]` and a `failed_sources` entry,
+  and the framework's row in the cross-walk then ages into the staleness window
+  where the stale guard raises it. Note that chain: the stale guard reads dates
+  out of content files, never watcher output.
+- **`watch_only: true` keeps a framework source out of `allowed_citation_urls`.**
+  Watching something must not enlarge what an automated run may claim. Framework
+  sources back cross-walk rows, not matrix rows, so `matrix_rows` is omitted;
+  `crosswalk_rows` is documentation for humans and no script reads it.
+
+**Detection is not judgement, and here it is also not fast.** This tier reports
+*that* an edition changed, never what it means — that stays tier D2 or a human.
+And the OWASP entry watches a landing page that is known to lag its own
+publication, so treat a change there as confirmation rather than the earliest
+possible warning; the reason it is watched anyway is recorded in the entry's note.
+While no `ANTHROPIC_API_KEY` is configured, a detected framework change produces a
+green run with a warning annotation and a locally-queued adjudication, not a pull
+request.

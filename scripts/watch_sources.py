@@ -73,6 +73,17 @@ STATUS_PHRASES = [
 
 PREVIEW_QUALIFIER = re.compile(r"\(preview\)", re.IGNORECASE)
 
+# Shape guard for `mode: "version"` captures. Whatever a framework publishes ends
+# up stored verbatim in fingerprints.json and in the evidence bundle the
+# adjudicator reads, so what may leave a fetch is bounded rather than trusted.
+VERSION_TOKEN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._:-]{0,31}$")
+# A four-component numeric version is indistinguishable from an IPv4 address to
+# the confidentiality scan in scripts/validate_bot_pr.py, which reads every
+# changed .json — including this script's baseline file. Rejecting it here turns
+# a would-be CI failure on an upstream string nobody wrote into a loud, ordinary
+# fetch failure that the stale guard escalates.
+FOUR_COMPONENT_NUMERIC = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
 
 # --------------------------------------------------------------------------
 # fetching
@@ -163,10 +174,47 @@ def extract_signals(text: str, headings: list[str], relevance: list[str] | None 
     }
 
 
+def version_signals(raw: str, pattern: str) -> dict:
+    """Fingerprint the version/edition tokens a framework publishes.
+
+    Why this mode exists: `extract_signals` fingerprints headings, preview
+    qualifiers and nine fixed status phrases. None of those changes when a
+    framework ships a new edition or bumps a dataset version, so registering a
+    framework source under `html`/`markdown` would produce a source that reports
+    "unchanged" forever — worse than not registering it, because the registry
+    would then claim coverage it does not have. That blind spot is how the OWASP
+    LLM Top 10 2026 edition went unnoticed here.
+
+    Captures are shape-checked, not trusted: only bounded version-like tokens
+    survive. A pattern that captures nothing raises, so the source is recorded
+    ok=false and announced, rather than silently fingerprinting an empty set and
+    reporting "no change" for the rest of time.
+    """
+    found = re.findall(pattern, raw, re.MULTILINE)
+    tokens = {(m if isinstance(m, str) else m[0]).strip() for m in found}
+    accepted = sorted(
+        t for t in tokens if VERSION_TOKEN.match(t) and not FOUR_COMPONENT_NUMERIC.match(t)
+    )
+    rejected = sorted(tokens - set(accepted))
+    if not accepted:
+        raise LookupError(
+            f"version_pattern matched no acceptable token "
+            f"(raw matches: {len(found)}, rejected by shape guard: {rejected[:5]})"
+        )
+    return {
+        "versions": accepted,
+        "version_count": len(accepted),
+        "rejected_token_count": len(rejected),
+    }
+
+
 def signals_for_source(source: dict) -> dict:
     mode = source["mode"]
     relevance = source.get("relevance_filter")
     raw = fetch(source["url"])
+
+    if mode == "version":
+        return version_signals(raw, source["version_pattern"])
 
     if mode == "roadmap":
         features = json.loads(raw)
@@ -208,6 +256,19 @@ def describe_change(previous: dict, current: dict) -> list[str]:
             notes.append(f"roadmap status: {previous.get('status')!r} -> {current.get('status')!r}")
         if previous.get("modified") != current.get("modified"):
             notes.append(f"roadmap modified: {previous.get('modified')!r} -> {current.get('modified')!r}")
+        return notes
+
+    # Version-mode signals share none of the keys the heading diff below reads,
+    # so without this branch a framework-edition change would be reported as a
+    # bare "[changed] <id>" with no notes at all, and the evidence bundle would
+    # carry an empty change_notes entry for the one event this mode exists for.
+    if "versions" in current or "versions" in previous:
+        before_versions = set(previous.get("versions") or [])
+        after_versions = set(current.get("versions") or [])
+        for version in sorted(after_versions - before_versions):
+            notes.append(f"version/edition token appeared: {version!r}")
+        for version in sorted(before_versions - after_versions):
+            notes.append(f"version/edition token disappeared: {version!r}")
         return notes
 
     before_headings = set(previous.get("headings") or [])
@@ -252,6 +313,38 @@ def citable_urls(entries: list[dict]) -> set[str]:
     }
 
 
+def registry_problems(registry: dict) -> list[str]:
+    """Structural faults in sources.json that failure isolation cannot absorb.
+
+    Two of the three keys checked here are read *outside* the per-source
+    try/except — `id` is needed to file the failure under, and a missing `mode`
+    or `version_pattern` is a repository defect rather than a network condition.
+    A malformed registry is therefore reported up front and fails the run, which
+    is the one case where this script is *meant* to go red: a fetch failure is
+    expected and isolated, a broken registry is neither.
+    """
+    problems: list[str] = []
+    seen: set[str] = set()
+    for index, source in enumerate(registry.get("sources", [])):
+        identifier = source.get("id")
+        if not identifier:
+            problems.append(f"sources[{index}]: missing 'id'")
+            continue
+        if identifier in seen:
+            problems.append(f"{identifier}: duplicate id")
+        seen.add(identifier)
+        mode = source.get("mode")
+        if not mode:
+            problems.append(f"{identifier}: missing 'mode'")
+        elif mode == "version" and not source.get("version_pattern"):
+            problems.append(f"{identifier}: mode 'version' requires 'version_pattern'")
+        elif mode == "roadmap" and source.get("feature_id") is None:
+            problems.append(f"{identifier}: mode 'roadmap' requires 'feature_id'")
+        if not source.get("url"):
+            problems.append(f"{identifier}: missing 'url'")
+    return problems
+
+
 def load_json(path: Path, default):
     if not path.exists():
         return default
@@ -283,6 +376,13 @@ def main() -> int:
     args = parser.parse_args()
 
     registry = load_json(SOURCES_FILE, {"sources": []})
+    problems = registry_problems(registry)
+    if problems:
+        for problem in problems:
+            print(f"[error] registry: {problem}", file=sys.stderr)
+        print(f"{len(problems)} registry problem(s); fix {SOURCES_FILE.name}.", file=sys.stderr)
+        return 1
+
     baseline = load_json(BASELINE_FILE, {"sources": {}})
     previous_sources = baseline.get("sources", {})
 
@@ -296,7 +396,12 @@ def main() -> int:
         source_id = source["id"]
         try:
             signals = signals_for_source(source)
-        except (urllib.error.URLError, urllib.error.HTTPError, LookupError, ValueError, json.JSONDecodeError, TimeoutError, OSError) as exc:
+        # re.error is listed explicitly: it subclasses Exception directly, not
+        # ValueError, so a malformed version_pattern or relevance_filter would
+        # otherwise escape failure isolation and abort the whole run — every
+        # source, not just the bad one. (KeyError needs no entry: it subclasses
+        # LookupError, which is already here.)
+        except (urllib.error.URLError, urllib.error.HTTPError, LookupError, ValueError, re.error, json.JSONDecodeError, TimeoutError, OSError) as exc:
             # Failure isolation: keep the previous baseline untouched and do not
             # report a change. The row simply ages and the stale guard raises it.
             failed_ids.append(source_id)
@@ -339,10 +444,17 @@ def main() -> int:
             "failed_sources": sorted(failed_ids),
             "change_notes": change_notes,
             "sources": results,
-            # Strictly what this run was able to reach. The adjudicator is told
-            # this is the complete set of URLs it may cite, so nothing unfetched
-            # may enter it — see .claude/agents/status-adjudicator.md.
-            "allowed_citation_urls": sorted(citable_urls(registry.get("sources", []))),
+            # Strictly what this run was able to reach, minus the watch-only
+            # sources. The adjudicator is told this is the complete set of URLs
+            # it may cite — see .claude/agents/status-adjudicator.md — so a
+            # framework source, which is watched to detect an edition change and
+            # is never a capability row's primary source, is deliberately kept
+            # out of it. Watching something must not enlarge what may be claimed.
+            "allowed_citation_urls": sorted(
+                citable_urls(
+                    [s for s in registry.get("sources", []) if not s.get("watch_only")]
+                )
+            ),
             # Registered, deliberately never fetched, and therefore NOT citable by
             # any automated run. Emitted only so scripts/validate_bot_pr.py can
             # tell a human-maintained citation apart from a fabricated one.
@@ -369,7 +481,10 @@ def main() -> int:
     )
 
     # Exit 0 even when sources fail: a fetch failure is an expected, isolated
-    # condition, not a pipeline error. The stale guard is what escalates.
+    # condition, not a pipeline error. The stale guard is what escalates. The one
+    # non-zero exit is a structurally broken registry, checked before the loop —
+    # that is a repository defect, and silently degrading it into "every source
+    # unreachable" would hide it behind the very mechanism built for outages.
     return 0
 
 

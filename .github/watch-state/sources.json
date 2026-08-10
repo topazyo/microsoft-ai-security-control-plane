@@ -124,6 +124,28 @@
       "matrix_rows": [9],
       "relevance_filter": ["Copilot", "data connectors are currently in Preview"],
       "note": "No dedicated Learn page exists for a Sentinel Microsoft Copilot connector -- six candidate URLs returned HTTP 404 on 2026-08-10 and the solutions catalog contains no occurrence of 'Copilot' -- so row 9 rests on this aggregate reference page's collapsible entry. relevance_filter is essential: the page is ~1.7 MB and lists hundreds of connectors, so an unfiltered fingerprint would change on nearly every run for entries that cannot affect any matrix row. The filter deliberately also matches the page-level 'currently in Preview' notice, which is one half of row 9's conflict."
+    },
+    {
+      "id": "mitre-atlas-dataset",
+      "title": "MITRE ATLAS distributed dataset (ATLAS.yaml)",
+      "url": "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml",
+      "cite_url": "https://atlas.mitre.org/",
+      "mode": "version",
+      "version_pattern": "^version:\\s*([0-9]+\\.[0-9]+\\.[0-9]+)\\s*$",
+      "watch_only": true,
+      "crosswalk_rows": ["MITRE ATLAS framework-versions row"],
+      "note": "Watches the dataset version the cross-walk's technique IDs are verified against, so a dataset bump is detected rather than noticed by hand. Three things worth knowing. (1) watch_only keeps this out of allowed_citation_urls: it backs no capability row and must not enlarge what an automated run may cite. (2) crosswalk_rows is documentation for humans -- no script reads it -- because a framework source backs a cross-walk row, not a matrix row, and matrix_rows is optional in the code. (3) This is the first fetch origin in this registry outside microsoft.com and MicrosoftDocs. A watcher target cannot be pinned to a commit the way an action can, so the compensating control is the shape guard on what a version_pattern may capture, in scripts/watch_sources.py."
+    },
+    {
+      "id": "owasp-llm-top-10-edition",
+      "title": "OWASP Top 10 for LLM Applications -- current edition landing page",
+      "url": "https://genai.owasp.org/llm-top-10/",
+      "cite_url": "https://genai.owasp.org/llm-top-10/",
+      "mode": "version",
+      "version_pattern": "\\b(LLM[0-9]{2}:20[0-9]{2})\\b",
+      "watch_only": true,
+      "crosswalk_rows": ["OWASP Top 10 for LLM Applications framework-versions row"],
+      "note": "Fingerprints the set of item IDs the landing page presents, because an edition change replaces every one of them at once -- a far tighter signal than a page hash. KNOWN LIMITATION, stated rather than implied: this page lags. On 2026-08-09 it still presented the 2025 edition while the 2026 edition was already published (crosswalk/framework-crosswalk.md records this), so detection here is late, not immediate. The alternative is worse: each edition has its own resource URL, so watching the current edition's page would never fire for the next one. Treat a change here as confirmation, never as the earliest possible warning."
     }
   ],
   "human_only_sources": [
@@ -137,6 +159,13 @@
       "id": "csa-aicm",
       "title": "CSA AI Controls Matrix (AICM) spreadsheet",
       "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified by a human against the AICM workbook.",
+      "covered_by": "checklists/capability-status-verification.md, Group 9"
+    },
+    {
+      "id": "nist-ai-600-1",
+      "title": "NIST AI 600-1 -- Generative AI Profile",
+      "cite_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+      "reason": "A static, dated PDF with no edition churn a fingerprint could see. Watching it would report 'unchanged' forever and be mistaken for coverage: a successor document appears at a NEW URL, which no fingerprint of the old one can detect. Recorded here so the gap is documented rather than invisible -- noticing a successor is a human step at the monthly refresh.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
     }
   ]
