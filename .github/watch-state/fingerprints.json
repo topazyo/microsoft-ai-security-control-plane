@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-07T18:32:02Z",
+  "updated_at": "2026-08-10T03:31:16Z",
   "sources": {
     "purview-dlp-copilot": {
       "ok": true,
@@ -37,7 +37,7 @@
         "heading_count": 20,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-07T18:32:02Z",
+      "checked_at": "2026-08-10T03:31:16Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
       "matrix_rows": [
         1,
@@ -64,7 +64,7 @@
         "heading_count": 4,
         "relevance_filtered": false
       },
-      "checked_at": "2026-08-07T18:32:02Z",
+      "checked_at": "2026-08-10T03:31:16Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
       "matrix_rows": [
         4
@@ -92,7 +92,7 @@
         "heading_count": 2,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-07T18:32:02Z",
+      "checked_at": "2026-08-10T03:31:16Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
       "matrix_rows": [
         4
@@ -131,7 +131,7 @@
         "heading_count": 10,
         "relevance_filtered": true
       },
-      "checked_at": "2026-08-07T18:32:02Z",
+      "checked_at": "2026-08-10T03:31:16Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
       "matrix_rows": [
         4
@@ -153,10 +153,230 @@
           "{'tagName': 'Worldwide (Standard Multi-Tenant)'}"
         ]
       },
-      "checked_at": "2026-08-07T18:32:02Z",
+      "checked_at": "2026-08-10T03:31:16Z",
       "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
       "matrix_rows": [
         2
+      ]
+    },
+    "purview-dspm-considerations": {
+      "ok": true,
+      "fingerprint": "988126b9ce1974688afb8444d6bdaff936d8b97fff2f82aeaa77a4e3adf2218e",
+      "signals": {
+        "headings": [
+          "Considerations for Microsoft Purview Data Security Posture Management",
+          "In this article",
+          "Prerequisites for Data Security Posture Management",
+          "Support for administrative units in Data Security Posture Management",
+          "Activity explorer events in Data Security Posture Management",
+          "Data updates paused for inactive tenants",
+          "Using the Data Security Posture Agent",
+          "Tips for custom Security Copilot prompts in Data Security Posture Management",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "in preview"
+        ],
+        "heading_count": 10,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
+      "matrix_rows": [
+        6,
+        7
+      ]
+    },
+    "purview-service-description": {
+      "ok": true,
+      "fingerprint": "dbea12f3ce102352dd9d37f2a31ab984ebf0942b7bf484c1a31f2cb66f85429b",
+      "signals": {
+        "headings": [
+          "Which users need a license?",
+          "Which users need a license?"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [],
+        "heading_count": 2,
+        "relevance_filtered": true
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
+      "matrix_rows": [
+        6
+      ]
+    },
+    "purview-dspm-for-ai-classic": {
+      "ok": true,
+      "fingerprint": "220c2d5218148cebd1b7445af156338509b4b9007884c392b08d4a1f7a5e9589",
+      "signals": {
+        "headings": [
+          "Learn about Data Security Posture Management for AI - (classic)",
+          "In this article",
+          "How to use Data Security Posture Management for AI",
+          "Next steps",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "in preview"
+        ],
+        "heading_count": 6,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
+      "matrix_rows": [
+        7
+      ]
+    },
+    "purview-dspm-for-ai-considerations-classic": {
+      "ok": true,
+      "fingerprint": "2370cca476c74646d8adc23e048e39753ca316318963591d5f53347314efe319",
+      "signals": {
+        "headings": [
+          "Considerations for DSPM for AI to manage data security and compliance protections for AI interactions - (classic)",
+          "In this article",
+          "Prerequisites for Data Security Posture Management for AI",
+          "Prerequisites for Fabric data risk assessments",
+          "Prerequisites for Microsoft 365 item-level scanning for data risk assessments",
+          "One-click policies from Data Security Posture Management for AI",
+          "Default policies for data discovery using Data Security Posture Management for AI",
+          "Default policies from data security to help you protect sensitive data used in generative AI",
+          "Activity explorer events",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "in preview"
+        ],
+        "heading_count": 11,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
+      "matrix_rows": [
+        7
+      ]
+    },
+    "purview-ai-interactions": {
+      "ok": true,
+      "fingerprint": "4585e576e69ec440336e6a419530645561ebf4674aa9a9098a2d6597c501a1c9",
+      "signals": {
+        "headings": [
+          "Microsoft Purview data security and compliance protections for generative AI apps",
+          "In this article",
+          "DSPM and DSPM for AI (classic)",
+          "Microsoft Purview strengthens information protection for AI apps",
+          "Sensitivity labels and AI interactions",
+          "Encryption without sensitivity labels and AI interactions",
+          "Data loss prevention and AI interactions",
+          "Insider Risk Management and AI interactions",
+          "Data classification and AI interactions",
+          "Microsoft Purview supports compliance management for AI apps",
+          "Auditing and AI interactions",
+          "Communication compliance and AI interactions",
+          "eDiscovery with content search and AI interactions",
+          "Data Lifecycle Management and AI interactions",
+          "Compliance Manager and AI interactions",
+          "Other documentation to help you secure and manage generative AI apps",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [],
+        "heading_count": 18,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
+      "matrix_rows": [
+        7
+      ]
+    },
+    "mdca-cloud-app-catalog": {
+      "ok": true,
+      "fingerprint": "96edcda1b605b64653be3392b537566a478c8203b69ae3c93c3d6321935bfb11",
+      "signals": {
+        "headings": [
+          "Find your cloud app and calculate risk scores",
+          "In this article",
+          "Risk scoring process",
+          "Confirm cloud app security risk",
+          "Customize the risk score",
+          "Override the risk score",
+          "Request a risk score update",
+          "Suggest a change to the cloud app catalog",
+          "Supported filters and categories",
+          "Supported cloud app catalog categories",
+          "Next steps",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [],
+        "heading_count": 13,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
+      "matrix_rows": [
+        8
+      ]
+    },
+    "mdca-discovered-apps": {
+      "ok": true,
+      "fingerprint": "f0542ca32f350a3451c70e14bc5295b8be334c41bef2b071ff2b90415e94a9e0",
+      "signals": {
+        "headings": [
+          "View discovered apps with the Cloud discovery dashboard",
+          "In this article",
+          "Prerequisites",
+          "Review the cloud discovery dashboard",
+          "Deep dive into discovered apps",
+          "Discover resources and custom apps",
+          "Generate a cloud discovery executive report",
+          "Exclude entities",
+          "Manage continuous reports",
+          "Delete cloud discovery data",
+          "Next steps",
+          "Feedback",
+          "Additional resources"
+        ],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "deprecated"
+        ],
+        "heading_count": 13,
+        "relevance_filtered": false
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
+      "matrix_rows": [
+        8
+      ]
+    },
+    "sentinel-data-connectors-reference": {
+      "ok": true,
+      "fingerprint": "34befb5c22083edcc133cfc25ce57e769e9211c380585f52b3b0afbf38e3e5e4",
+      "signals": {
+        "headings": [],
+        "preview_qualified_headings": [],
+        "status_phrases_present": [
+          "deprecated",
+          "in preview"
+        ],
+        "heading_count": 0,
+        "relevance_filtered": true
+      },
+      "checked_at": "2026-08-10T03:31:16Z",
+      "cite_url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
+      "matrix_rows": [
+        9
       ]
     }
   }
