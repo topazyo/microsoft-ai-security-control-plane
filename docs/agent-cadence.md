@@ -142,6 +142,21 @@ whose automation never commits can silently switch its own schedule off.
 
 ## Secrets
 
+> **Current status, as of 2026-08-10: `ANTHROPIC_API_KEY` is not configured in this
+> repository** (`gh api repos/<owner>/<repo>/actions/secrets` returns
+> `total_count: 0`). The consequence is specific and worth stating plainly rather
+> than discovering later: **tiers D2 and D3 cannot run.** `claude-code-action`
+> aborts with an environment-validation error when the key renders empty, so the
+> adjudication path has never completed successfully. Tiers **D1 (daily detection)
+> and D4 (weekly stale guard) are unaffected** — they hold no secret and run on the
+> auto-provided `GITHUB_TOKEN`.
+>
+> A green scheduled `Source watch` run is therefore **not** evidence that
+> adjudication works: when `detect` finds no change, the `Adjudicate` job is
+> skipped entirely and the run is green regardless. To verify the path after
+> provisioning the key, dispatch `Source watch` with `force_adjudication: true` and
+> confirm the `Adjudicate` job itself is green.
+
 Only `ANTHROPIC_API_KEY` is used, and only by the two model tiers. D1 and D4 hold
 no secret at all, so the large majority of scheduled runs never touch one.
 Workflows use `pull_request`, never `pull_request_target`, so fork pull requests
