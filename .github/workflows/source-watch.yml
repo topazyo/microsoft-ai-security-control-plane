@@ -99,21 +99,22 @@ jobs:
         run: |
           echo "::warning::Status-relevant change detected in: ${CHANGED_SOURCES:-none reported}. Tier D2 adjudication did NOT run - no ANTHROPIC_API_KEY is configured. Run it locally; see docs/agent-cadence.md."
           {
-            echo '## Adjudication deferred to a local run'
-            echo
-            echo "Changed sources this run: \`${CHANGED_SOURCES:-none reported}\`"
-            echo
-            echo 'No `ANTHROPIC_API_KEY` is configured, so tier D2 did not run in CI.'
-            echo 'This run is green because nothing failed - judgement is queued for a human, not skipped.'
-            echo
-            echo '**What to do:** follow *Running tiers D2 and D3 locally* in `docs/agent-cadence.md`.'
-            echo 'The evidence bundle for this run is attached to the `detect` job as the'
-            echo '`evidence-bundle` artifact - download it and adjudicate from it rather than'
-            echo 're-fetching, so the D1/D2 split is preserved.'
-            echo
-            echo 'Every control still applies: the resulting pull request is checked by'
-            echo '`validate_bot_pr.py` and the `Validate matrix` gate exactly as an automated one'
-            echo 'would be.'
+            printf '## Adjudication deferred to a local run\n\n'
+            printf 'Changed sources this run: %s\n\n' "${CHANGED_SOURCES:-none reported}"
+            cat <<'SUMMARY'
+          No `ANTHROPIC_API_KEY` is configured, so tier D2 did not run in CI.
+          This run is green because nothing failed - judgement is queued for a human,
+          not skipped.
+
+          **What to do:** follow *Running tiers D2 and D3 locally* in
+          `docs/agent-cadence.md`. The evidence bundle for this run is attached to the
+          `detect` job as the `evidence-bundle` artifact - download it and adjudicate
+          from it rather than re-fetching, so the D1/D2 split is preserved.
+
+          Every control still applies: the resulting pull request is checked by
+          `validate_bot_pr.py` and the `Validate matrix` gate exactly as an automated
+          one would be.
+          SUMMARY
           } >> "${GITHUB_STEP_SUMMARY}"
 
   adjudicate:
