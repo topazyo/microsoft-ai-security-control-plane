@@ -12,13 +12,14 @@ Checks
                            comparisons).
 2. status labels         — every matrix Status cell uses one of the four legend
                            labels, exactly.
-3. source domains        — every primary-source URL is Microsoft Learn or the
-                           public Microsoft 365 Roadmap. This is the "never a
-                           launch blog" rule, executed.
+3. source domains        — every primary-source URL is Microsoft Learn, the
+                           public Microsoft 365 Roadmap, or GitHub Docs. This is
+                           the "never a launch blog" rule, executed.
 4. last-verified dates   — every matrix row carries an ISO last-verified date.
 5. citation containment  — when an evidence bundle is supplied, every URL cited
                            by the adjudicator is one the watcher actually
-                           fetched. This is the anti-fabrication control.
+                           fetched, or one registered as a human-only source.
+                           This is the anti-fabrication control.
 6. confidentiality       — no GUIDs, emails, IPs or tenant-shaped identifiers.
 7. escalation direction  — a row may never be moved *out* of "Requires further
                            validation" by automation; that transition requires
@@ -58,6 +59,14 @@ PATH_ALLOWLIST = [
 ALLOWED_SOURCE_HOSTS = [
     re.compile(r"^https://learn\.microsoft\.com/", re.IGNORECASE),
     re.compile(r"^https://(www\.)?microsoft\.com/[^ )]*microsoft-365/roadmap", re.IGNORECASE),
+    # GitHub Docs is the first-party documentation site for a Microsoft-owned
+    # product, so it is the same *class* of source as Microsoft Learn — not a
+    # relaxation toward blogs. It is admitted on one condition, enforced by
+    # convention in sources.json rather than here: a docs.github.com source is
+    # registered under `human_only_sources`, never under `sources`, so the
+    # watcher never fetches it and no GitHub page content ever reaches the
+    # adjudicator. See docs/agent-cadence.md.
+    re.compile(r"^https://docs\.github\.com/", re.IGNORECASE),
 ]
 
 URL_PATTERN = re.compile(r"https?://[^\s)\]<>\"']+")
@@ -213,7 +222,8 @@ def check_matrix(findings: Findings) -> None:
                 if not any(pattern.match(url) for pattern in ALLOWED_SOURCE_HOSTS):
                     findings.error(
                         "source domain",
-                        f"row {identifier}: '{url}' is not Microsoft Learn or the public Microsoft 365 Roadmap",
+                        f"row {identifier}: '{url}' is not Microsoft Learn, the public "
+                        "Microsoft 365 Roadmap, or GitHub Docs",
                     )
                     domain_failures += 1
 
@@ -222,7 +232,24 @@ def check_matrix(findings: Findings) -> None:
     if not date_failures:
         findings.note(f"last-verified dates: all {len(rows)} row(s) carry an ISO date")
     if not domain_failures:
-        findings.note(f"source domains: all {len(rows)} row(s) cite Learn or the public Roadmap")
+        findings.note(f"source domains: all {len(rows)} row(s) cite Learn, the public Roadmap or GitHub Docs")
+
+
+def citable_urls(entries: list[dict]) -> set[str]:
+    """Citable URL for each registry entry that declares one.
+
+    `entry.get("cite_url") or entry["url"]`, never `entry.get("cite_url",
+    entry["url"])`: Python evaluates a `dict.get` default *eagerly*, so the
+    second form raises KeyError on an entry that has `cite_url` but no `url` —
+    which is exactly the shape of a human-only source, since a source that is
+    never fetched has no fetch URL. That crashes the validator with a traceback
+    instead of failing a check.
+    """
+    return {
+        entry.get("cite_url") or entry["url"]
+        for entry in entries
+        if entry.get("cite_url") or entry.get("url")
+    }
 
 
 def check_citation_containment(evidence_path: Path | None, findings: Findings) -> None:
@@ -232,10 +259,20 @@ def check_citation_containment(evidence_path: Path | None, findings: Findings) -
     Without one, it falls back to the pinned source registry, so the check still
     runs on human pull requests: a citation nothing watches is a citation that
     will silently go stale.
+
+    Human-only sources are the deliberate exception, and the two sets are kept
+    apart on purpose. A human-only source is never fetched, so it can never
+    appear in `allowed_citation_urls` — the set the adjudicator is told is the
+    complete list of URLs it may cite. Merging the two would let an automated run
+    cite a page no watcher ever read, which is precisely what this check exists
+    to prevent. So the bundle carries them under a separate key, and only this
+    validator unions them: containment recognises a human-maintained citation,
+    while the adjudicator's citable set stays strictly fetch-backed.
     """
     if evidence_path is not None and evidence_path.exists():
         bundle = json.loads(evidence_path.read_text(encoding="utf-8"))
         allowed = set(bundle.get("allowed_citation_urls") or [])
+        allowed |= set(bundle.get("human_only_citation_urls") or [])
         origin = f"evidence bundle {evidence_path.name}"
     elif evidence_path is not None:
         findings.error("citation containment", f"evidence bundle {evidence_path} not found")
@@ -246,7 +283,8 @@ def check_citation_containment(evidence_path: Path | None, findings: Findings) -
             findings.error("citation containment", "no evidence bundle and no source registry to check against")
             return
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
-        allowed = {s.get("cite_url", s["url"]) for s in registry.get("sources", [])}
+        allowed = citable_urls(registry.get("sources", []))
+        allowed |= citable_urls(registry.get("human_only_sources", []))
         origin = "pinned source registry"
 
     if not allowed:

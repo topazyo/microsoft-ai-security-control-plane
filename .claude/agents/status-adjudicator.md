@@ -18,6 +18,13 @@ completely, and it is far worse than reporting nothing at all.
 
 - The evidence bundle from `scripts/watch_sources.py` (path is given to you).
   Its `allowed_citation_urls` list is the complete set of URLs you may cite.
+  - The bundle also carries `human_only_citation_urls`. **That list is not yours
+    to cite.** Those sources are registered as deliberately never fetched, so no
+    run — including this one — has read them, and citing one would be asserting a
+    status from a page nobody looked at. The list exists only so
+    `scripts/validate_bot_pr.py` can tell a human-maintained citation apart from
+    a fabricated one. If a change appears to need one of those URLs, that is a
+    human's row to update: raise an issue and stop.
 - `.github/watch-state/sources.json` — the source-to-row mapping.
 - The current content files.
 
