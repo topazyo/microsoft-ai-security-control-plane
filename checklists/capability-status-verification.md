@@ -51,7 +51,8 @@
 
 **Group 8 — Framework cross-walk hygiene**
 
-- [ ] OWASP references use **2025 (v2.0)** numbering (Sensitive Information Disclosure = **LLM02**, Supply Chain = **LLM03**).
+- [ ] OWASP references use **2026 (v1.0)** numbering (Sensitive Information Disclosure = **LLM02**, Excessive Agency = **LLM03**, Supply Chain = **LLM04**, Improper Output Handling = **LLM10**).
+- [ ] No 2025-era OWASP ID carried over unchanged — only **LLM01** and **LLM02** kept their numbers in the 2026 edition. Re-base every other ID against the renumbering table in [`crosswalk/framework-crosswalk.md`](../crosswalk/framework-crosswalk.md), and note that **System Prompt Leakage (LLM07:2025) is now LLM08:2026 Hidden Context Exposure** — renamed and re-scoped, not a like-for-like rename.
 - [ ] Every framework cited **with its version** and mapped at **item level** (OWASP LLM0x; MITRE ATLAS technique ID verified against the ATLAS knowledge base; NIST AI 600-1 subcategory; CSA AICM control-objective ID with version).
 - [ ] Cross-walk labelled **author synthesis, "v0.1, expanding"** — never presented as Microsoft's official mapping.
 
@@ -70,4 +71,4 @@
 
 ---
 
-*Version 1.1 — Last validated: 2026-08-07 — against Microsoft Learn + the public Microsoft 365 Roadmap as of the verification date. Groups 3, 5, 6, and 7 describe verification steps for capabilities whose matrix rows land in v0.1.1; their statuses are not asserted here. Group 9 covers the automated refresh described in [`docs/agent-cadence.md`](../docs/agent-cadence.md).*
+*Version 1.2 — Last validated: 2026-08-07 — against Microsoft Learn + the public Microsoft 365 Roadmap as of the verification date. Group 8 was separately re-based on the OWASP Top 10 for LLM Applications **2026 edition** on 2026-08-09; that date covers the OWASP items only and deliberately does **not** advance the Microsoft-source validation date above, which was not re-run. Groups 3, 5, 6, and 7 describe verification steps for capabilities whose matrix rows land in v0.1.1; their statuses are not asserted here. Group 9 covers the automated refresh described in [`docs/agent-cadence.md`](../docs/agent-cadence.md).*

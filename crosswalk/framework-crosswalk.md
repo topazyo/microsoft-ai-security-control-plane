@@ -6,26 +6,49 @@
 
 | Framework | Version / edition cited | Primary source | Last verified |
 |---|---|---|---|
-| OWASP Top 10 for LLM Applications | **2025 edition (v2.0**, published 2024-11-18 by the OWASP GenAI Security Project**)** | [genai.owasp.org/llm-top-10](https://genai.owasp.org/llm-top-10/) · [2025 resource page](https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/) | 2026-08-07 |
+| OWASP Top 10 for LLM Applications | **2026 edition (v1.0**, published 2026-08-03 by the OWASP GenAI Security Project**)** | [2026 resource page](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) · [genai.owasp.org/llm-top-10](https://genai.owasp.org/llm-top-10/) | 2026-08-09 |
 | MITRE ATLAS | ATLAS knowledge base (technique IDs verified against MITRE's published `atlas-data` dataset, dist v5.6.0) | [atlas.mitre.org](https://atlas.mitre.org/) — technique pages [AML.T0051](https://atlas.mitre.org/techniques/AML.T0051), [AML.T0057](https://atlas.mitre.org/techniques/AML.T0057) | 2026-08-07 |
 | NIST AI 600-1 | *Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile*, July 2024 | [nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf) · [doi.org/10.6028/NIST.AI.600-1](https://doi.org/10.6028/NIST.AI.600-1) | 2026-08-07 |
 | CSA AI Controls Matrix (AICM) | **v1.1.0** (official CSA spreadsheet, generated 2026-06-18): **247 control objectives across 18 security domains** (verified by direct count). Note: the CSA artifact page (v1, released 2025-07-09, updated 2025-10-30) still describes "243 control objectives" — the v1.0 figure. | [cloudsecurityalliance.org/artifacts/ai-controls-matrix](https://cloudsecurityalliance.org/artifacts/ai-controls-matrix) | 2026-07-03 |
 
 > **Why the CSA row's date is older than the others.** AICM control IDs are published only inside a registration-gated spreadsheet, so this row cannot be re-verified without a human downloading the workbook. It is recorded as a human-only source in `.github/watch-state/sources.json` and is deliberately left at its last genuine verification date rather than being advanced along with the rest of the table. See [`docs/agent-cadence.md`](../docs/agent-cadence.md).
 
-**A note on the 2025 OWASP numbering:** this cross-walk uses the **2025** designations (LLM01:2025–LLM10:2025). In the 2025 edition, **Sensitive Information Disclosure is LLM02** and **Supply Chain is LLM03** — the older 2023/24 v1.x numbering (where Sensitive Information Disclosure was LLM06) is **not** used here.
+**A note on the 2026 OWASP numbering:** this cross-walk uses the **2026** designations (LLM01:2026–LLM10:2026). Only **LLM01 Prompt Injection** and **LLM02 Sensitive Information Disclosure** kept the numbers they held in 2025; every other slot changed occupant, so a 2025-era `LLM0x` ID must never be carried over unchanged. In particular, **Supply Chain moved from LLM03:2025 to LLM04:2026**, and **System Prompt Leakage (LLM07:2025) was renamed and re-scoped as LLM08:2026 Hidden Context Exposure**. Neither the 2025 numbering nor the older 2023/24 v1.x numbering (where Sensitive Information Disclosure was LLM06) is used here.
+
+### 2025 → 2026 renumbering
+
+Anyone re-basing a 2025-era mapping should check every ID against this table; only the first two rows carry over unchanged. Item titles are those printed in the 2026 edition.
+
+| 2025 item | 2026 item | Change |
+|---|---|---|
+| LLM01:2025 Prompt Injection | **LLM01:2026** Prompt Injection | Number unchanged; scope widened to cross-modal (image/audio/video) injection |
+| LLM02:2025 Sensitive Information Disclosure | **LLM02:2026** Sensitive Information Disclosure | Number unchanged |
+| LLM03:2025 Supply Chain | **LLM04:2026** Supply Chain | Down one; now also covers model-artifact provenance failure |
+| LLM04:2025 Data and Model Poisoning | **LLM05:2026** Data and Model Poisoning | Down one; absorbs fine-tuning subversion |
+| LLM05:2025 Improper Output Handling | **LLM10:2026** Improper Output Handling | Down five — the largest fall; now spans insecure generated code |
+| LLM06:2025 Excessive Agency | **LLM03:2026** Excessive Agency | Up three; the 2026 edition calls this the most consequential move on the list |
+| LLM07:2025 System Prompt Leakage | **LLM08:2026** Hidden Context Exposure | Renamed and re-scoped, and down one |
+| LLM08:2025 Vector and Embedding Weaknesses | **LLM09:2026** Vector and Embedding Weaknesses | Down one |
+| LLM09:2025 Misinformation | **LLM07:2026** Misinformation | Up two |
+| LLM10:2025 Unbounded Consumption | **LLM06:2026** Unbounded Consumption | Up four |
 
 ## Cross-walk (item level)
 
 Row numbers refer to [`matrix/capability-status-matrix.md`](../matrix/capability-status-matrix.md).
 
-| Microsoft control (matrix row) | OWASP LLM 2025 item | MITRE ATLAS technique ID | NIST AI 600-1 risk (subcategory) | CSA AICM control ID (version) | Notes (synthesis) |
+| Microsoft control (matrix row) | OWASP LLM 2026 item | MITRE ATLAS technique ID | NIST AI 600-1 risk (subcategory) | CSA AICM control ID (version) | Notes (synthesis) |
 |---|---|---|---|---|---|
-| Row 1 — Purview DLP: block labeled files/emails from Copilot processing | **LLM02:2025** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-17** Sensitive Data Protection · **DSP-04** Data Classification (v1.1.0) | Prevents labeled content from entering Copilot responses; classification-label-driven protection of sensitive data through its lifecycle. |
-| Row 2 — Purview DLP: block external web search on SIT-containing prompts | **LLM02:2025** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-10** Sensitive Data Transfer · **DSP-17** Sensitive Data Protection (v1.1.0) | Egress-side control: stops sensitive prompt content from leaving the tenant boundary toward external search providers. |
-| Row 3 — Purview DLP: block SITs typed into prompts | **LLM02:2025** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-17** Sensitive Data Protection (v1.1.0) | Input-side control; note the matrix row's status (**Requires further validation**) and its typed-text-only scanning caveat. |
-| Row 4 — Defender for Cloud: AI threat protection (Azure-hosted models) | **LLM01:2025** Prompt Injection | **AML.T0051** LLM Prompt Injection (Direct **AML.T0051.000** / Indirect **AML.T0051.001**) | **2.9 Information Security** | **LOG-03** Security Monitoring and Alerting · **LOG-15** Input Monitoring · **LOG-16** Output Monitoring (v1.1.0) | Runtime detection of prompt-injection/jailbreak-class attacks against **Azure-hosted** models only — see the row-4 scope boundary; this mapping must not be read as M365 Copilot coverage. |
-| Row 5 — Purview DLP: block external email from Copilot grounding (preview) | **LLM01:2025** Prompt Injection | **AML.T0051.001** LLM Prompt Injection: Indirect | **2.9 Information Security** | *Not yet mapped — requires an AICM v1.1.0 workbook lookup (human step; see the CSA note above)* | Input-side trust boundary rather than an egress control: excludes externally-sourced email from the grounding set. **Read the matrix row's scope caveat before treating this as XPIA coverage** — per Learn the policy evaluates sender-domain metadata only and does not inspect the email body, so injected instructions arriving from an accepted domain are not addressed. |
+| Row 1 — Purview DLP: block labeled files/emails from Copilot processing | **LLM02:2026** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-17** Sensitive Data Protection · **DSP-04** Data Classification (v1.1.0) | Prevents labeled content from entering Copilot responses; classification-label-driven protection of sensitive data through its lifecycle. |
+| Row 2 — Purview DLP: block external web search on SIT-containing prompts | **LLM02:2026** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-10** Sensitive Data Transfer · **DSP-17** Sensitive Data Protection (v1.1.0) | Egress-side control: stops sensitive prompt content from leaving the tenant boundary toward external search providers. |
+| Row 3 — Purview DLP: block SITs typed into prompts | **LLM02:2026** Sensitive Information Disclosure | **AML.T0057** LLM Data Leakage | **2.4 Data Privacy** | **DSP-17** Sensitive Data Protection (v1.1.0) | Input-side control; note the matrix row's status (**Requires further validation**) and its typed-text-only scanning caveat. |
+| Row 4 — Defender for Cloud: AI threat protection (Azure-hosted models) | **LLM01:2026** Prompt Injection | **AML.T0051** LLM Prompt Injection (Direct **AML.T0051.000** / Indirect **AML.T0051.001**) | **2.9 Information Security** | **LOG-03** Security Monitoring and Alerting · **LOG-15** Input Monitoring · **LOG-16** Output Monitoring (v1.1.0) | Runtime detection of prompt-injection/jailbreak-class attacks against **Azure-hosted** models only — see the row-4 scope boundary; this mapping must not be read as M365 Copilot coverage. |
+| Row 5 — Purview DLP: block external email from Copilot grounding (preview) | **LLM01:2026** Prompt Injection | **AML.T0051.001** LLM Prompt Injection: Indirect | **2.9 Information Security** | *Not yet mapped — requires an AICM v1.1.0 workbook lookup (human step; see the CSA note above)* | Input-side trust boundary rather than an egress control: excludes externally-sourced email from the grounding set. **Read the matrix row's scope caveat before treating this as XPIA coverage** — per Learn the policy evaluates sender-domain metadata only and does not inspect the email body, so injected instructions arriving from an accepted domain are not addressed. |
+
+## OWASP's own framework mappings in the 2026 edition
+
+The 2026 edition ships **Appendix A: Related Framework Mappings**, which maps each of the ten LLM risks to nine external frameworks — among them MITRE ATLAS, MITRE ATT&CK, CWE, NIST AI 600-1, the NIST AI RMF, and the CSA AICM — and which replaces the per-entry "Related Frameworks and Taxonomies" sections carried by earlier editions. Appendix A pins its own framework versions (ATLAS content v2026.06, ATT&CK v19.1, CWE 4.20, NIST AI 600-1 v1.0, CSA AICM v1.1); those pins are OWASP's, and are not necessarily the versions cited in the table at the top of this file.
+
+That appendix does **not** cover Microsoft products, and it neither validates nor endorses anything below: this cross-walk maps *Microsoft controls* to framework items and remains the author's synthesis. The two overlap only on the OWASP-to-framework leg — and for that leg Appendix A is the better authority, so consult it there in preference to any inference drawn from this file.
 
 ## About the CSA AICM column
 
@@ -38,7 +61,7 @@ CSA publishes the AICM control-objective IDs inside the downloadable spreadsheet
 
 ## Verification method
 
-- OWASP item numbers verified against the OWASP GenAI Security Project's published 2025 list on **2026-08-07** (LLM01 Prompt Injection, LLM02 Sensitive Information Disclosure, LLM03 Supply Chain read directly from `genai.owasp.org/llm-top-10`); re-confirm at each refresh.
+- OWASP item numbers re-based on the **2026 edition (v1.0)** and verified on **2026-08-09**. The full ten-item list, the renumbering table above, and the LLM01/LLM02 designations used in the cross-walk were read from the published PDF obtained via the [2026 resource page](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/); the downloaded artifact was confirmed byte-identical to OWASP's own published download (SHA-256 `ef87993a4e50ae9d83b41ff7a3d3e6320a82dfa8d4ec6bf98d0ce264b2e6108e`, 2402520 bytes). Two caveats are worth recording. First, the released v1.0 PDF's title page still carries an unfilled "[Publication date to be set]" placeholder and prints no publication date anywhere, so the 2026-08-03 date above is taken from the OWASP resource page, not from the document. Second, as of this verification the [genai.owasp.org/llm-top-10](https://genai.owasp.org/llm-top-10/) landing page still presented the 2025 edition, so that URL alone is not evidence of the current edition — cite the resource page. Re-confirm at each refresh.
 - MITRE ATLAS technique IDs and names verified against MITRE's published `atlas-data` dataset on **2026-08-07** — dataset `version: 5.6.0`, with `AML.T0051` "LLM Prompt Injection" (sub-techniques `.000` Direct, `.001` Indirect) and `AML.T0057` "LLM Data Leakage" read from the distributed `ATLAS.yaml`. The live technique pages on `atlas.mitre.org` use the `/techniques/<ID>` paths cited above.
 - NIST AI 600-1 verified against the official PDF fetched from nvlpubs.nist.gov (full text) on 2026-07-03; the published document is static and its availability was re-confirmed on **2026-08-07**.
 - CSA AICM verified two ways on **2026-07-03** (not re-verified since): version, scope, and availability against the CSA artifact page; item-level control IDs, titles, domains, and the 247/18 counts directly against the official AICM v1.1.0 spreadsheet. This row is a human-only source — see the note under the framework-versions table.
