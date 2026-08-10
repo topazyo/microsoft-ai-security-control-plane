@@ -40,6 +40,20 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Resolved as a step output because the `secrets` context cannot be used in
+      # an `if:` directly. Only the boolean is emitted; the key is passed via env
+      # and never printed.
+      - name: Check for adjudication credentials
+        id: creds
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY}" ]; then
+            echo 'present=true' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'present=false' >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Re-fetch every pinned source
         id: watch
         run: |
@@ -54,6 +68,7 @@ jobs:
           echo "Rows depending on these sources must NOT have their last-verified date advanced."
 
       - name: Consolidate, update stamps and write the CHANGELOG entry
+        if: steps.creds.outputs.present == 'true'
         # Pinned to a commit SHA, not a mutable tag: a tag can be repointed at
         # new code, and this step holds an API key and write permissions.
         # 7ff6806 = tag v1 as of 2026-08-08. Re-pin deliberately when upgrading.
@@ -76,11 +91,46 @@ jobs:
             request; never merge.
 
       - name: Validate the proposed refresh
+        if: steps.creds.outputs.present == 'true'
         run: |
           python3 scripts/validate_bot_pr.py \
             --bot \
             --base-ref "origin/${GITHUB_REF_NAME}" \
             --evidence evidence/evidence.json
+
+      # Nothing was committed when the model step is skipped: the --update-baseline
+      # write above lives only on the runner and is discarded with it, so the
+      # repository's fingerprints are untouched and the next run re-detects the
+      # same change. Deferring costs nothing except the human's time.
+      - name: Announce that the monthly consolidation is queued for a human
+        if: steps.creds.outputs.present != 'true'
+        env:
+          FAILED_SOURCES: ${{ steps.watch.outputs.failed_sources }}
+        run: |
+          echo "::warning::Monthly consolidation did NOT run - no ANTHROPIC_API_KEY is configured. Run tier D3 locally; see docs/agent-cadence.md."
+          {
+            cat <<'SUMMARY'
+          ## Monthly consolidation deferred to a local run
+
+          No `ANTHROPIC_API_KEY` is configured, so tier D3 did not run in CI.
+          This run is green because nothing failed - the consolidation is queued for a
+          human, not skipped.
+
+          **Nothing was written to the repository.** The `--update-baseline` write above
+          exists only on this runner and is discarded with it, so `fingerprints.json` is
+          unchanged and the next run re-detects the same state.
+          SUMMARY
+            if [ -n "${FAILED_SOURCES}" ]; then
+              printf '\n**Unreachable this run:** %s - do not advance those rows dates.\n' "${FAILED_SOURCES}"
+            fi
+            cat <<'SUMMARY'
+
+          **What to do:** follow *Running tiers D2 and D3 locally* in
+          `docs/agent-cadence.md`. Advance a last-verified date only where the source
+          was fetched successfully, and write exactly one CHANGELOG heading for this
+          calendar month.
+          SUMMARY
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Escalate rows needing in-tenant confirmation
         env:
