@@ -126,6 +126,69 @@
       "note": "No dedicated Learn page exists for a Sentinel Microsoft Copilot connector -- six candidate URLs returned HTTP 404 on 2026-08-10 and the solutions catalog contains no occurrence of 'Copilot' -- so row 9 rests on this aggregate reference page's collapsible entry. relevance_filter is essential: the page is ~1.7 MB and lists hundreds of connectors, so an unfiltered fingerprint would change on nearly every run for entries that cannot affect any matrix row. The filter deliberately also matches the page-level 'currently in Preview' notice, which is one half of row 9's conflict."
     },
     {
+      "id": "defender-o365-prompt-injection",
+      "title": "Prompt injection protection in Microsoft Defender for Office 365",
+      "url": "https://learn.microsoft.com/en-us/defender-office-365/step-by-step-guides/prompt-injection-protection-defender-for-office-365",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-office-365/step-by-step-guides/prompt-injection-protection-defender-for-office-365",
+      "mode": "html",
+      "matrix_rows": [10],
+      "note": "The only page found that names Microsoft 365 Copilot and prompt injection together in a Defender product, and the one that states the detection reaches advanced hunting as a detection-technology property. Carries no preview qualifier, unlike the AI-agent page watched alongside it -- watched so that either page gaining or losing a qualifier is detected."
+    },
+    {
+      "id": "defender-xdr-ai-agent-detection",
+      "title": "Detect and investigate threats to AI agents using Microsoft Defender (Preview)",
+      "url": "https://learn.microsoft.com/en-us/defender-xdr/security-for-ai/ai-agent-detection-protection",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/security-for-ai/ai-agent-detection-protection",
+      "mode": "html",
+      "matrix_rows": [10],
+      "note": "Carries row 10's explicit public-preview sentence and the XPIA coverage list. Also carries one half of row 10's conflict: it says Agent 365 observability data lands in CloudAppEvents, which the CloudAppEvents reference page's own covered-services list does not corroborate. A qualifier change here is what would move row 10."
+    },
+    {
+      "id": "defender-xdr-cloudappevents-table",
+      "title": "CloudAppEvents table (Microsoft Defender XDR advanced hunting)",
+      "url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table",
+      "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table",
+      "mode": "html",
+      "matrix_rows": [10],
+      "note": "The other half of row 10's conflict. Its 'Apps and services covered' list names neither Microsoft 365 Copilot nor Agent 365, while the AI-agent page says agent observability data lands in this table. Watched because this list gaining an AI entry is precisely what would resolve the conflict and let row 10 leave Requires further validation, after in-tenant confirmation by a human."
+    },
+    {
+      "id": "entra-ca-workload-identity",
+      "title": "Conditional Access for workload identities",
+      "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/workload-identity",
+      "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/workload-identity",
+      "mode": "html",
+      "matrix_rows": [11],
+      "note": "Carries row 11's scope boundary -- single-tenant service principals registered in your tenant, with Microsoft and multitenant apps stated as not covered -- and the Workload Identities Premium prerequisite. Watched because a change to that exclusion sentence is what would let a first-party Copilot service principal become a documented target."
+    },
+    {
+      "id": "entra-ca-users-groups",
+      "title": "Target users, groups and workload identities in Conditional Access",
+      "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-users-groups",
+      "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-users-groups",
+      "mode": "html",
+      "matrix_rows": [11],
+      "note": "States row 11's scope boundary independently of the workload-identity article, in near-identical wording. Registered as a second source deliberately: the row's status rests on two pages agreeing, so a divergence between them is itself the signal to watch for."
+    },
+    {
+      "id": "entra-ca-agent-id",
+      "title": "Conditional Access for agents",
+      "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/agent-id",
+      "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/agent-id",
+      "mode": "html",
+      "matrix_rows": [11],
+      "note": "The newer agent-identity surface, distinct from workload identities. Source of row 11's 'aren't currently supported' list, the API-key bypass limit, and the custom-security-attribute targeting that this repository's checklist had previously attributed to workload identities. Watched because the agent path is where preview qualifiers are currently moving."
+    },
+    {
+      "id": "entra-ca-target-agent-identities",
+      "title": "Target agent identities with Conditional Access",
+      "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
+      "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
+      "mode": "html",
+      "matrix_rows": [11],
+      "note": "Added after an independent re-verification pass found row 11's 'agent users ... currently in Preview' quote attributed to the Conditional Access for agents article, which does not contain it -- this page does. Registered so the citation is reachable from the row's own sources, which is the same class of defect sources.json:89 records for the DSPM considerations page. Watched because the agent-targeting options are where preview qualifiers are currently moving, and because this page and the users-and-groups article currently disagree about which of those options are in preview."
+    },
+    {
       "id": "mitre-atlas-dataset",
       "title": "MITRE ATLAS distributed dataset (ATLAS.yaml)",
       "url": "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml",
@@ -160,6 +223,34 @@
       "title": "CSA AI Controls Matrix (AICM) spreadsheet",
       "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified by a human against the AICM workbook.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
+    },
+    {
+      "id": "github-copilot-policies",
+      "title": "GitHub Copilot policies (concepts)",
+      "cite_url": "https://docs.github.com/en/copilot/concepts/policies",
+      "reason": "Human-only by design, not by limitation: the page is perfectly fetchable, and that is exactly why the rule matters. Admitting docs.github.com to the allowed source hosts (decision D3) widened what this repository may cite; keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate, so no non-Microsoft-Learn page content ever reaches the model tier. Row 12 is re-verified by a human at the monthly cadence.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-copilot-policy-conflicts",
+      "title": "GitHub Copilot policy conflicts (reference)",
+      "cite_url": "https://docs.github.com/en/copilot/reference/policy-conflicts",
+      "reason": "Human-only for the same reason as github-copilot-policies. Carries the per-policy least-restrictive / most-restrictive resolution that refutes the blanket 'more restrictive wins' expectation this repository previously recorded, so it is the page most worth a human re-read at each refresh.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-copilot-enterprise-policies",
+      "title": "Managing GitHub Copilot policies for an enterprise",
+      "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-enterprise/manage-enterprise-policies",
+      "reason": "Human-only for the same reason as github-copilot-policies. Source of row 12's enterprise-level actor and plan names, and of the only generally-available wording found across the GitHub Copilot policy pages.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-copilot-org-policies",
+      "title": "Managing GitHub Copilot policies for an organization",
+      "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/manage-policies",
+      "reason": "Human-only for the same reason as github-copilot-policies. Source of row 12's enterprise-over-organization precedence sentence and of the organization-level preview opt-in.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
     },
     {
       "id": "nist-ai-600-1",
