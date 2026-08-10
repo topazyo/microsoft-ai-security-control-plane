@@ -1,0 +1,62 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 Topaz Hurvitz
+
+The documentation content of this repository is licensed under the Creative
+Commons Attribution 4.0 International License.
+
+  Human-readable summary: https://creativecommons.org/licenses/by/4.0/
+  Full legal code:        https://creativecommons.org/licenses/by/4.0/legalcode
+
+What this covers
+----------------
+
+Everything in this repository except the automation, which is MIT-licensed
+(see LICENSE):
+
+  matrix/         the capability-status matrix
+  crosswalk/      the framework cross-walk (author synthesis)
+  checklists/     the practitioner verification checklist
+  docs/           the status-reading and cadence guides
+  README.md, disclaimer.md, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md
+
+You are free to share and adapt this material for any purpose, including
+commercially, provided you give appropriate credit, link to the license, and
+indicate if changes were made.
+
+Attribution
+-----------
+
+Suggested form:
+
+  "Microsoft AI Security Control Plane" by Topaz Hurvitz, licensed under
+  CC BY 4.0. Source: https://github.com/topazyo/microsoft-ai-security-control-plane
+
+Why this repository is dual-licensed
+------------------------------------
+
+The cross-walk is the author's interpretive synthesis rather than a mechanical
+transformation of public data (see disclaimer.md). CC BY keeps that synthesis
+attributable as it is reused, while MIT keeps the automation freely reusable
+without an attribution obligation attaching to code.
+
+What this license does NOT cover
+--------------------------------
+
+Third-party material referenced or quoted here remains the property of its
+owners and is used for identification and commentary:
+
+  * Microsoft product names, documentation text quoted as status evidence, and
+    the Microsoft 365 Roadmap. Quoted Microsoft Learn text belongs to Microsoft.
+  * OWASP Top 10 for LLM Applications item numbers and titles (OWASP GenAI
+    Security Project).
+  * MITRE ATLAS technique identifiers and names (The MITRE Corporation).
+  * NIST AI 600-1 subcategory identifiers and text (a U.S. Government
+    publication).
+  * CSA AI Controls Matrix control identifiers, titles and domain labels
+    (Cloud Security Alliance). Only identifiers, titles and domain labels are
+    reproduced here, with attribution; the control-specification text belongs
+    to CSA and is not redistributed.
+
+This repository is not affiliated with, sponsored by, or endorsed by any of
+those organizations. See disclaimer.md.
