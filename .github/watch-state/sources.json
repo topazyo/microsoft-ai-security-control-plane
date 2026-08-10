@@ -80,6 +80,15 @@
       "note": "Documents the default-posture behaviour row 7 records (audit mode only; blocking policy shipped in test mode). Learn marks this article the classic version, replaced by a new one. Watched precisely because a classic page is where a silent behavioural divergence would appear."
     },
     {
+      "id": "purview-dspm-for-ai-considerations-classic",
+      "title": "Considerations for deploying DSPM for AI (classic)",
+      "url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
+      "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
+      "mode": "html",
+      "matrix_rows": [7],
+      "note": "Carries every load-bearing quote behind row 7's audit-mode-only finding, plus the third-party-AI-site dependency text. Added on 2026-08-10 after an independent verification pass found those quotes were verbatim but cited to pages that do not contain them -- the same class of gap sources.json:42 records for the release-notes archive. Also reachable via a 301 from /purview/ai-microsoft-purview-considerations."
+    },
+    {
       "id": "purview-ai-interactions",
       "title": "Microsoft Purview data security and compliance protections for AI",
       "url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
