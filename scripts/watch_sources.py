@@ -233,6 +233,25 @@ def describe_change(previous: dict, current: dict) -> list[str]:
     return notes
 
 
+def citable_urls(entries: list[dict]) -> set[str]:
+    """Citable URL for each registry entry that declares one.
+
+    `entry.get("cite_url") or entry["url"]`, never `entry.get("cite_url",
+    entry["url"])`: a `dict.get` default is evaluated *eagerly*, so the second
+    form raises KeyError on an entry carrying `cite_url` but no `url` — the
+    shape of a human-only source, which has no fetch URL by definition.
+
+    Deliberately duplicated in scripts/validate_bot_pr.py: these scripts are
+    standalone by design (standard library only, no package, no import path to
+    share), and the trap is subtle enough to be worth stating in both places.
+    """
+    return {
+        entry.get("cite_url") or entry["url"]
+        for entry in entries
+        if entry.get("cite_url") or entry.get("url")
+    }
+
+
 def load_json(path: Path, default):
     if not path.exists():
         return default
@@ -293,7 +312,7 @@ def main() -> int:
             "fingerprint": digest,
             "signals": signals,
             "checked_at": now,
-            "cite_url": source.get("cite_url", source["url"]),
+            "cite_url": source.get("cite_url") or source["url"],
             "matrix_rows": source.get("matrix_rows", []),
         }
         prior = previous_sources.get(source_id)
@@ -320,8 +339,15 @@ def main() -> int:
             "failed_sources": sorted(failed_ids),
             "change_notes": change_notes,
             "sources": results,
-            "allowed_citation_urls": sorted(
-                s.get("cite_url", s["url"]) for s in registry.get("sources", [])
+            # Strictly what this run was able to reach. The adjudicator is told
+            # this is the complete set of URLs it may cite, so nothing unfetched
+            # may enter it — see .claude/agents/status-adjudicator.md.
+            "allowed_citation_urls": sorted(citable_urls(registry.get("sources", []))),
+            # Registered, deliberately never fetched, and therefore NOT citable by
+            # any automated run. Emitted only so scripts/validate_bot_pr.py can
+            # tell a human-maintained citation apart from a fabricated one.
+            "human_only_citation_urls": sorted(
+                citable_urls(registry.get("human_only_sources", []))
             ),
         }
         args.evidence_out.parent.mkdir(parents=True, exist_ok=True)
