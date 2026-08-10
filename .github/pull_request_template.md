@@ -36,8 +36,9 @@
 
 - [ ] `python -m compileall -q scripts`
 - [ ] `python scripts/validate_bot_pr.py --base-ref origin/main`
-- [ ] `python scripts/stale_guard.py` (expect exactly one knowingly-stale item:
-      the CSA AICM framework row)
+- [ ] `python scripts/stale_guard.py` (expect **zero** stale items — any stale
+      item is a finding, not a known exception; no CI check enforces this, so
+      paste the output rather than inferring it from a green run)
 - [ ] `Validate matrix` is green **and actually ran** — if this pull request
       touches only paths outside the workflow's filter, the check will not
       appear; paste the local validator output below instead. An absent check

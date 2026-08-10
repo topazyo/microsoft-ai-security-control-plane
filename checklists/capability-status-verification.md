@@ -67,7 +67,7 @@
 - [ ] OWASP references use **2026 (v1.0)** numbering (Sensitive Information Disclosure = **LLM02**, Excessive Agency = **LLM03**, Supply Chain = **LLM04**, Improper Output Handling = **LLM10**).
 - [ ] No 2025-era OWASP ID carried over unchanged — only **LLM01** and **LLM02** kept their numbers in the 2026 edition. Re-base every other ID against the renumbering table in [`crosswalk/framework-crosswalk.md`](../crosswalk/framework-crosswalk.md), and note that **System Prompt Leakage (LLM07:2025) is now LLM08:2026 Hidden Context Exposure** — renamed and re-scoped, not a like-for-like rename.
 - [ ] Every framework cited **with its version** and mapped at **item level** (OWASP LLM0x; MITRE ATLAS technique ID verified against the ATLAS knowledge base; NIST AI 600-1 subcategory; CSA AICM control-objective ID with version).
-- [ ] Cross-walk labelled **author synthesis, "v0.1, expanding"** — never presented as Microsoft's official mapping.
+- [ ] Cross-walk labelled **author synthesis, "v0.2"** — never presented as Microsoft's official mapping. It graduated from "v0.1, expanding" on **2026-08-10** under the repository's own rule that every cell must be resolved first, including the CSA AICM column. **If a row is ever added with an unfilled AICM cell, take the label back to v0.1** rather than leaving it overstated — "every cell resolved" is the whole meaning of the v0.2 label.
 
 **Group 9 — Automated-refresh escalation (run at every refresh, and when reviewing any automated pull request)**
 

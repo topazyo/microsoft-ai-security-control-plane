@@ -102,10 +102,17 @@ python scripts/validate_bot_pr.py --base-ref origin/main
 python scripts/stale_guard.py
 ```
 
-All three must pass before you mark a pull request ready. `stale_guard.py` is
-expected to report exactly one knowingly-stale item — the CSA AICM framework
-row, whose control IDs are published only in a registration-gated spreadsheet
-and cannot be machine-verified.
+All three must pass before you mark a pull request ready. **`stale_guard.py` is
+expected to report zero stale items.** Any stale item is a finding to act on,
+not a known exception to scroll past. This instruction previously told you to
+expect exactly one — the CSA AICM framework row — which stopped being true on
+2026-08-10 when that row was re-verified against the workbook. A checklist that
+teaches you to normalise one stale item teaches you to miss the second.
+
+Note that the guard's own output is **not** enforced by any CI check: the
+`Validate matrix` workflow pipes it into the run summary with `|| true`, so it
+can never fail a build. Paste the output into the pull request instead of
+inferring it from a green check.
 
 **The CI workflow does not trigger on every path.** `Validate matrix` runs on
 changes under `matrix/`, `crosswalk/`, `checklists/`, `scripts/`,

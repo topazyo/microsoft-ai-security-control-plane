@@ -18,7 +18,8 @@ The capability is fully released for applicable customers. Evidence looks like:
 
 Microsoft's primary sources label the capability preview. Evidence looks like:
 
-- A "(preview)" qualifier on the Microsoft Learn section heading — e.g., as of 2026-07-03, "Block sensitive information types in prompts **(preview)**" on the Purview DLP for Copilot page.
+- A "(preview)" qualifier on the Microsoft Learn section heading — e.g., as of 2026-08-07, "Block external email from being processed **(preview)**" on the Purview DLP for Copilot page.
+  - **A qualifier can disappear without the capability changing state, so check the body too.** This example previously cited "Block sensitive information types in prompts (preview)" on the same page. That heading dropped its qualifier on 2026-08-07 while the body of that same section still read "This feature is in preview" — which is why matrix row 3 is **Requires further validation** rather than GA. A dropped qualifier is not, by itself, evidence of anything.
 - Learn wording such as "This feature is in preview and is rolling out to all tenants… Check whether rollout has reached your tenant."
 - A Roadmap entry in "Rolling out" with a preview-availability date, or a release-note entry titled "(Preview)".
 
@@ -55,4 +56,4 @@ Used when Microsoft's own sources conflict, or when a status cannot be confirmed
 
 ## Worked example — why this discipline matters
 
-"DLP for Microsoft 365 Copilot" is commonly discussed as one switch. The matrix's three DLP rows show what verification actually finds (as of 2026-07-03): sensitivity-label processing restriction — **GA**; external-web-search blocking on sensitive prompts — **GA only as of June CY2026** (Roadmap 548671 "Launched"); typed-prompt SIT blocking — **still "(preview)" on Learn and previously described otherwise in blog coverage**, so it is labelled Requires further validation. One feature name, three schedules, three different pieces of evidence — a coverage map that says "DLP covers Copilot: done" hides all three.
+"DLP for Microsoft 365 Copilot" is commonly discussed as one switch. The matrix's **four** DLP rows show what verification actually finds (as of **2026-08-07**): sensitivity-label processing restriction — **GA**; external-web-search blocking on sensitive prompts — **GA**, Roadmap 548671 "Launched", availability June CY2026; typed-prompt SIT blocking — **Requires further validation**, because the Learn section heading dropped its "(preview)" qualifier while the body of that same section still reads "This feature is in preview and is rolling out to all tenants"; and external-email grounding block — **Public Preview**, evaluating sender-domain metadata only, never the email body. One feature name, four sub-capabilities, four different pieces of evidence — a coverage map that says "DLP covers Copilot: done" hides all four.
