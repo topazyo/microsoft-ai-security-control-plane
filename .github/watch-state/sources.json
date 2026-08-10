@@ -253,6 +253,34 @@
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
     },
     {
+      "id": "github-mcp-enterprise-allowlist",
+      "title": "Configuring an MCP server allowlist for your enterprise",
+      "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-enterprise-allowlist",
+      "reason": "Human-only for the same reason as the other docs.github.com entries (decision D3): admitting the host widened what may be cited, and keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate. Carries row 13's load-bearing quotes -- the managed-settings.json allowlist, the deny-wins evaluation order with its built-in-server carve-out, and the fail-closed behaviour on a malformed or unretrievable policy.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-mcp-management",
+      "title": "MCP management concepts (GitHub Copilot)",
+      "cite_url": "https://docs.github.com/en/copilot/concepts/mcp-management",
+      "reason": "Human-only, as above. The page that states row 13's scope boundary: managed-settings.json applies across the clients that support it, a set GitHub describes as 'Planned to expand in the near future'. That sentence is the residual gap, so this page is the one most worth a human re-read at each refresh.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-mcp-server-access",
+      "title": "Configuring MCP server access (GitHub Copilot)",
+      "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-server-access",
+      "reason": "Human-only, as above. Carries the sentence that splits row 13's status in two: the private-registry method is 'in public preview and is not the recommended method', while managed-settings.json is 'the more secure, generally available method'. Registered here because citation containment correctly rejected the row when this page was quoted in the details section without being registered -- the atomicity rule doing its job.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-mcp-allowlist-enforcement",
+      "title": "MCP allowlist enforcement (GitHub Copilot reference)",
+      "cite_url": "https://docs.github.com/en/copilot/reference/mcp-allowlist-enforcement",
+      "reason": "Human-only, as above. Records the private-registry method's stated limitations in GitHub's own words -- name/ID matching 'which can be bypassed by editing configuration files', and strict enforcement 'not yet available'. Watched by a human because that sentence disappearing is what would change row 13's second status.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
       "id": "nist-ai-600-1",
       "title": "NIST AI 600-1 -- Generative AI Profile",
       "cite_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
