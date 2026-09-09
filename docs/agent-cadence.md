@@ -13,11 +13,28 @@ treated as stale."* This document describes the machinery that carries it out.
 Two facts about this repository shape everything below.
 
 **Retrieval is cheap; judgement is expensive and risky.** The complete watch
-surface is fifteen pinned sources (`.github/watch-state/sources.json`) covering
-every matrix row plus two framework editions. Re-derive that count from the
-registry rather than trusting this sentence — it described four sources for a
-release and a half after there were more.
-Fetching them costs seconds and no tokens. What costs tokens — and
+surface is **22 watched sources** (`.github/watch-state/sources.json`), plus
+**11 human-only sources** that no workflow may fetch, against **13 matrix rows**.
+Those numbers are re-derived from the registry and the matrix by
+`check_doc_counts` in `scripts/validate_bot_pr.py`, and CI fails when this
+sentence drifts from them. It previously carried a written instruction to
+re-derive the count by hand instead — the instruction was correct, was followed,
+and the figure still sat seven short for a release, which is why the instruction
+is now a test.
+
+**The watch surface does not cover every matrix row.** The sentence above used to
+say it did. Matrix rows **12** and **13** — GitHub Copilot policy management and
+MCP governance — are backed only by `docs.github.com` pages registered under
+`human_only_sources`, and the NIST and CSA cross-walk rows only by a static PDF
+and a registration-gated spreadsheet. **4 of the dated items** are therefore
+permanently human-only: no agent run can ever advance them. That invariant is
+load-bearing for reading `scripts/stale_guard.py` correctly — for those four,
+stale means *a human is overdue*, not *the automation is failing* — and it is
+enforced rather than asserted, by `check_source_coverage`, which fails CI if any
+matrix row is claimed by no registry entry and prints the human-only residue on
+every run.
+
+Fetching the watched sources costs seconds and no tokens. What costs tokens — and
 what can go wrong — is deciding what a change *means*. A fabricated status change
 carrying a plausible-looking URL would destroy the repository's entire premise,
 which is that status is verified rather than asserted.
@@ -63,8 +80,8 @@ that forms judgements cannot touch the outside world.
 pinned `actionlint` image, and its path filter includes `.github/workflows/**`,
 so a change that breaks the automation is caught by the automation.
 
-This separation is worth its complexity even at nine rows because it converts prose
-rules into mechanical invariants. "Never cite a source you did not read" is
+This separation is worth its complexity even at **13 matrix rows** because it
+converts prose rules into mechanical invariants. "Never cite a source you did not read" is
 unenforceable as an instruction and trivially enforceable as a set-membership
 test: every primary-source URL in the matrix must appear in the evidence bundle's
 `allowed_citation_urls`, or CI fails.
@@ -78,10 +95,85 @@ fingerprints those: section headings, which headings carry a `(preview)`
 qualifier, and which status-bearing phrases are present.
 
 Broad release-notes pages need a further narrowing. The Defender for Cloud
-release notes carry seventy-five headings for products outside this repository's
-scope; the `relevance_filter` in `sources.json` reduces that to the AI-related
-entries, so the detector does not escalate for Kubernetes and SQL notes that
-cannot affect any row.
+release notes carry dozens of entries for products outside this repository's
+scope — 84 of 86 headings when measured on 2026-09-09 — so the
+`relevance_filter` in `sources.json` reduces the watched signal to the AI-related
+entries. That measurement is dated deliberately and is not maintained as a
+standing figure: a live page's heading count drifts continuously, and a number in
+prose that nobody re-derives becomes a false claim just by sitting still. This
+paragraph used to assert "seventy-five" for the same reason.
+
+**The filter scopes the page text, not only the heading list** — and that
+distinction is the entire value of the filter. `apply_relevance_filter` narrows
+the headings; `relevance_scoped_text` narrows the text the status phrases are
+counted over, to the matching sections, everything nested under them, and the
+page-level text — what precedes the first heading, plus the H1's own section.
+All three rules are deliberate. A matching entry owns its `### Details`
+subsection, whose own heading mentions nothing. A page-wide release-state banner
+belongs to no entry at all, so no per-entry pattern can be expected to claim it,
+and dropping it would lose real signal: the notice that all Sentinel data
+connectors "are currently in Preview" is one half of matrix row 9's documented
+conflict. And page-level text is kept **without conferring scope on what nests
+under it** — treating the H1 as an in-scope *ancestor* would make every section
+on the page inherit it and restore precisely the unfiltered behaviour being
+removed.
+
+Before that second function existed, three of the four signal fields were scoped
+and `status_phrases_present` was computed over the **whole page**. The result was
+a fingerprint that looked filtered and was not: a *Classic Defender for SQL APIs
+retirement* entry — a section the filter correctly rejected, since `\bAI\b` does
+not match "APIs" — introduced the phrase `retired` on **2026-09-05**, and the
+daily watcher re-reported it on five successive days while row 4's two in-scope
+AI headings stayed byte-identical to baseline. The hole was symmetric, which is
+the worse half: an out-of-scope phrase *disappearing* fired it just as readily,
+and that escalation would have had no visible cause on the page at all.
+
+Two consequences to know before reading a `[changed]` line:
+
+- **The change note states its scope.** `status phrase appeared in
+  relevance-scoped sections: 'retired'`, versus `... in whole page: ...`. A line
+  that cannot be attributed to a scope cannot be interpreted without re-fetching
+  and re-reading the page, and a detector whose alarms cannot be interpreted
+  trains its maintainer to stop reading them. That is the cost that mattered
+  here, more than the wasted runs.
+- **Scoping moved the fingerprint of the filtered sources only.** An unfiltered
+  source's phrase set is still taken over its whole page text verbatim, so its
+  stored fingerprint is untouched by the change. The four filtered sources
+  re-baseline once, on the first watcher run after it, and that single
+  escalation has a documented cause: run
+  `python3 scripts/watch_sources.py --update-baseline` and record it in
+  `CHANGELOG.md`, exactly as any adjudicated non-status change is recorded.
+
+## What the cadence cannot find at all
+
+Every watched source but one is a per-capability page, and a per-capability page
+can only ever report drift on a row that **already exists**. The registry holds
+exactly one release-notes source — Defender for Cloud, plus its archive — and no
+Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel "what's new"
+equivalent. **The automated cadence is therefore structurally incapable of
+finding a capability that should become a new row.**
+
+That gap is stated rather than closed, and the README and the matrix now say the
+same thing rather than promising more: the automated half of the monthly refresh
+covers **drift on existing rows**, and **discovery of new capabilities is a human
+step** — the product "What's new" pages and the Message Center, checked at each
+refresh under `checklists/capability-status-verification.md`, Group 9.
+
+Registering a "what's new" source per product family was the alternative. It was
+not chosen because every such source would escalate on entries for products
+outside this repository's scope, and a discovery escalation needs human triage by
+definition — nothing in tier D2 can decide that a capability deserves a row. It
+would convert a known human step into an automated queue that a human still has
+to empty, while adding the maintenance surface of five more relevance filters.
+That trade is worth revisiting if the matrix grows enough that a human sweep
+stops being credible; it is recorded here so the choice is visible rather than
+implied by an absence.
+
+The failure class is worth naming, because this repository has already paid for
+it once. A registry that claims a coverage shape it does not have is exactly how
+the OWASP LLM Top 10 2026 edition landed unnoticed. The remedy there was a new
+extraction mode; the remedy here is an honest sentence in the README, plus
+`check_source_coverage` failing CI if a row ever ships with no source at all.
 
 ## Direction of change decides what automation may do
 
@@ -128,6 +220,14 @@ re-verified by a human.
 Both exclusions are recorded as `human_only_sources` in `sources.json`, with
 their reasons, so that a future maintainer does not "fix" them by adding a
 credential.
+
+They are not the only entries in that array, and the others sit there for the
+opposite kind of reason. The `docs.github.com` Copilot-policy and MCP pages are
+perfectly fetchable; they are kept out of `sources` *precisely* so that no
+non-Microsoft-Learn page content ever reaches the model tier. A `reason` is a
+required key on every human-only entry for exactly this: "cannot be fetched" and
+"must not be fetched" are indistinguishable from the outside and have opposite
+remedies.
 
 ## CHANGELOG discipline
 
@@ -184,12 +284,20 @@ and update both workflows together.
 ## Operating the cadence
 
 ```bash
+python3 -m unittest discover -s tests -t .             # signal-scoping and registry tests
 python3 scripts/watch_sources.py                       # detect changes (read-only)
 python3 scripts/watch_sources.py --update-baseline     # accept the current state as the baseline
 python3 scripts/stale_guard.py                         # list rows past the staleness window
 python3 scripts/validate_bot_pr.py --base-ref origin/main
 python3 scripts/changelog_entry.py --bullet "..." --dry-run
 ```
+
+The tests are standard library only, like everything else here, and they exist
+because the signal-scoping defect was a *silent* one: every run was green, the
+report line looked plausible, and only re-deriving the heading counts by hand
+exposed it. `tests/test_watch_sources.py` therefore includes the case that would
+have caught it — a fixture whose only change is an out-of-scope retirement notice,
+asserted to produce **no** reported change.
 
 ## Running tiers D2 and D3 locally
 
@@ -248,7 +356,15 @@ with `force_adjudication: true`, confirm the `Adjudicate` job is green, and dele
 the status note under **Secrets**.
 
 Adding a capability row means adding its source to `sources.json` with the matrix
-rows it backs. A source that is not in the registry is never fetched.
+rows it backs — to `sources` if a workflow may fetch it, to `human_only_sources`
+if it may not. As of `schema_version` 2 **both** arrays carry `matrix_rows`
+(integers) and `crosswalk_rows` (strings), and both are validated:
+`registry_problems` rejects an entry that declares neither and an id duplicated
+across the two arrays, and `check_source_coverage` rejects a matrix row that no
+entry claims. Before that, coverage for the human-only half was recorded only in
+prose inside each entry's `reason`, which is why rows 12 and 13 could sit
+unwatched through a full release without anything being able to say so. A source
+that is not in the registry is never fetched.
 
 ## Watching a framework edition
 

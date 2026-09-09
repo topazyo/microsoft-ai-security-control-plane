@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "comment": "Pinned source registry for the automated cadence. Every entry maps a primary source to the matrix rows whose status depends on it. Adding a source here is the only way to bring it under automated watch; see docs/agent-cadence.md.",
+  "schema_version": 2,
+  "comment": "Pinned source registry for the automated cadence. Every entry in BOTH arrays maps a primary source to what it backs, via matrix_rows (integers) or crosswalk_rows (strings); scripts/watch_sources.py rejects an entry that declares neither, and scripts/validate_bot_pr.py rejects a matrix row that no entry claims. Adding a source to sources is the only way to bring it under automated watch. human_only_sources are registered, deliberately never fetched, and therefore never citable by an automated run - four of this repository's dated items (matrix rows 12 and 13, the NIST and CSA cross-walk rows) rest on them alone and can only ever be advanced by a human. schema_version 2 added the row mappings to human_only_sources. See docs/agent-cadence.md.",
   "staleness_window_days": 30,
   "sources": [
     {
@@ -215,18 +215,21 @@
     {
       "id": "message-center",
       "title": "Microsoft 365 Message Center",
-      "reason": "Message Center posts are tenant-scoped and have no public URL (docs/how-to-read-status.md). Reading them would require a tenant credential in repository secrets and would introduce tenant-scoped data, which disclaimer.md and the README confidentiality note forbid. This source is therefore permanently human-only and is never fetched by any workflow.",
+      "matrix_rows": [2],
+      "reason": "Message Center posts are tenant-scoped and have no public URL (docs/how-to-read-status.md). Reading them would require a tenant credential in repository secrets and would introduce tenant-scoped data, which disclaimer.md and the README confidentiality note forbid. This source is therefore permanently human-only and is never fetched by any workflow. matrix_rows is [2] because MC1263277 is the rollout reference recorded in row 2's history caveat, which is the only row any Message Center post currently backs; the Message Center is also the human discovery channel for capabilities that do not yet have a row at all, and that use is recorded in checklists/capability-status-verification.md Group 9 rather than as a row mapping, because a row that does not exist cannot be mapped.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
     },
     {
       "id": "csa-aicm",
       "title": "CSA AI Controls Matrix (AICM) spreadsheet",
+      "crosswalk_rows": ["CSA AI Controls Matrix (AICM) framework-versions row"],
       "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified by a human against the AICM workbook.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
     },
     {
       "id": "github-copilot-policies",
       "title": "GitHub Copilot policies (concepts)",
+      "matrix_rows": [12],
       "cite_url": "https://docs.github.com/en/copilot/concepts/policies",
       "reason": "Human-only by design, not by limitation: the page is perfectly fetchable, and that is exactly why the rule matters. Admitting docs.github.com to the allowed source hosts (decision D3) widened what this repository may cite; keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate, so no non-Microsoft-Learn page content ever reaches the model tier. Row 12 is re-verified by a human at the monthly cadence.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -234,6 +237,7 @@
     {
       "id": "github-copilot-policy-conflicts",
       "title": "GitHub Copilot policy conflicts (reference)",
+      "matrix_rows": [12],
       "cite_url": "https://docs.github.com/en/copilot/reference/policy-conflicts",
       "reason": "Human-only for the same reason as github-copilot-policies. Carries the per-policy least-restrictive / most-restrictive resolution that refutes the blanket 'more restrictive wins' expectation this repository previously recorded, so it is the page most worth a human re-read at each refresh.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -241,6 +245,7 @@
     {
       "id": "github-copilot-enterprise-policies",
       "title": "Managing GitHub Copilot policies for an enterprise",
+      "matrix_rows": [12],
       "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-enterprise/manage-enterprise-policies",
       "reason": "Human-only for the same reason as github-copilot-policies. Source of row 12's enterprise-level actor and plan names, and of the only generally-available wording found across the GitHub Copilot policy pages.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -248,6 +253,7 @@
     {
       "id": "github-copilot-org-policies",
       "title": "Managing GitHub Copilot policies for an organization",
+      "matrix_rows": [12],
       "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/manage-policies",
       "reason": "Human-only for the same reason as github-copilot-policies. Source of row 12's enterprise-over-organization precedence sentence and of the organization-level preview opt-in.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -255,6 +261,7 @@
     {
       "id": "github-mcp-enterprise-allowlist",
       "title": "Configuring an MCP server allowlist for your enterprise",
+      "matrix_rows": [13],
       "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-enterprise-allowlist",
       "reason": "Human-only for the same reason as the other docs.github.com entries (decision D3): admitting the host widened what may be cited, and keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate. Carries row 13's load-bearing quotes -- the managed-settings.json allowlist, the deny-wins evaluation order with its built-in-server carve-out, and the fail-closed behaviour on a malformed or unretrievable policy.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -262,6 +269,7 @@
     {
       "id": "github-mcp-management",
       "title": "MCP management concepts (GitHub Copilot)",
+      "matrix_rows": [13],
       "cite_url": "https://docs.github.com/en/copilot/concepts/mcp-management",
       "reason": "Human-only, as above. The page that states row 13's scope boundary: managed-settings.json applies across the clients that support it, a set GitHub describes as 'Planned to expand in the near future'. That sentence is the residual gap, so this page is the one most worth a human re-read at each refresh.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -269,6 +277,7 @@
     {
       "id": "github-mcp-server-access",
       "title": "Configuring MCP server access (GitHub Copilot)",
+      "matrix_rows": [13],
       "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-server-access",
       "reason": "Human-only, as above. Carries the sentence that splits row 13's status in two: the private-registry method is 'in public preview and is not the recommended method', while managed-settings.json is 'the more secure, generally available method'. Registered here because citation containment correctly rejected the row when this page was quoted in the details section without being registered -- the atomicity rule doing its job.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -276,6 +285,7 @@
     {
       "id": "github-mcp-allowlist-enforcement",
       "title": "MCP allowlist enforcement (GitHub Copilot reference)",
+      "matrix_rows": [13],
       "cite_url": "https://docs.github.com/en/copilot/reference/mcp-allowlist-enforcement",
       "reason": "Human-only, as above. Records the private-registry method's stated limitations in GitHub's own words -- name/ID matching 'which can be bypassed by editing configuration files', and strict enforcement 'not yet available'. Watched by a human because that sentence disappearing is what would change row 13's second status.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
@@ -283,6 +293,7 @@
     {
       "id": "nist-ai-600-1",
       "title": "NIST AI 600-1 -- Generative AI Profile",
+      "crosswalk_rows": ["NIST AI 600-1 framework-versions row"],
       "cite_url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
       "reason": "A static, dated PDF with no edition churn a fingerprint could see. Watching it would report 'unchanged' forever and be mistaken for coverage: a successor document appears at a NEW URL, which no fingerprint of the old one can detect. Recorded here so the gap is documented rather than invisible -- noticing a successor is a human step at the monthly refresh.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
