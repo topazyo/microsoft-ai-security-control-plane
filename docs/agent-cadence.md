@@ -138,11 +138,38 @@ Two consequences to know before reading a `[changed]` line:
   here, more than the wasted runs.
 - **Scoping moved the fingerprint of the filtered sources only.** An unfiltered
   source's phrase set is still taken over its whole page text verbatim, so its
-  stored fingerprint is untouched by the change. The four filtered sources
-  re-baseline once, on the first watcher run after it, and that single
-  escalation has a documented cause: run
+  stored fingerprint is untouched. Measured against the live sources on
+  **2026-09-09**, **three** of the four filtered sources re-baseline —
+  `defender-release-notes`, `defender-release-notes-archive` and
+  `sentinel-data-connectors-reference`; `purview-service-description` is
+  unaffected, because its phrase set is empty at either scope. Every phrase they
+  lose was traced to the section holding it before this was shipped, and all of
+  them sit under SQL, container, Kubernetes, multicloud or deprecated-connector
+  headings. So the first run after this change reports three sources with a
+  documented cause and no status meaning: run
   `python3 scripts/watch_sources.py --update-baseline` and record it in
   `CHANGELOG.md`, exactly as any adjudicated non-status change is recorded.
+
+### When a filter matches nothing
+
+Scoping the text correctly exposed a source that was watching almost nothing.
+`sentinel-data-connectors-reference` declares
+`["Copilot", "data connectors are currently in Preview"]` and matches **0 of the
+page's 47 headings** — the connector entries on that page are not headings, so a
+heading filter cannot reach them. The source had *appeared* to be watching
+something only because the phrase signal was taken over the whole page; correct
+the scope and the coverage that was never really there becomes visible.
+
+The watcher now says so. `filter_collapsed` flags any source whose declared
+filter matches no heading, the run prints a `[warn]`, and the evidence bundle
+carries `collapsed_filter_sources`. It is deliberately **not** a failure and
+**not** a change: the fetch succeeded and the fingerprint is honest about what it
+saw. What has gone is coverage — and a source watching only its preamble reports
+"unchanged" forever, which is indistinguishable from a healthy one. That
+indistinguishability is how the OWASP edition gap survived, so it is announced
+rather than inferred. `collapsed_filter_sources` is kept separate from
+`failed_sources` because the two need opposite responses: a failed fetch
+recovers by itself on the next run, a collapsed filter never does.
 
 ## What the cadence cannot find at all
 

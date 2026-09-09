@@ -191,6 +191,42 @@ class RelevanceScopingTests(unittest.TestCase):
         )
 
 
+class CollapsedFilterTests(unittest.TestCase):
+    """A filter that matches nothing must be announced, not silently obeyed.
+
+    This is the condition found live on `sentinel-data-connectors-reference`
+    while verifying the scoping fix: its filter matches 0 of 47 headings,
+    because the connector entries on that page are not headings. The source had
+    looked like it was watching something only because the phrase signal was
+    taken over the whole page — so correcting the scope exposed a source whose
+    coverage was already gone.
+    """
+
+    def test_a_filter_matching_no_heading_is_flagged(self):
+        signals = markdown_signals(RELEASE_NOTES, relevance=["\\bKubernetes\\b"])
+        self.assertEqual(signals["heading_count"], 0)
+        self.assertTrue(watch.filter_collapsed(signals))
+
+    def test_a_filter_that_matches_is_not_flagged(self):
+        self.assertFalse(watch.filter_collapsed(markdown_signals(RELEASE_NOTES)))
+
+    def test_a_source_with_no_filter_is_never_flagged(self):
+        """An unfiltered source has no filter to collapse, however few headings."""
+        signals = markdown_signals("body text with no headings at all\n", relevance=None)
+        self.assertEqual(signals["heading_count"], 0)
+        self.assertFalse(watch.filter_collapsed(signals))
+
+    def test_page_level_text_still_reaches_the_signal_when_the_filter_collapses(self):
+        """The collapsed case degrades to page-level text, and says so.
+
+        Asserted because this is what makes the warning readable rather than
+        alarming: the source is not broken, it is watching only the preamble.
+        """
+        signals = markdown_signals(RELEASE_NOTES, relevance=["\\bKubernetes\\b"])
+        self.assertEqual(signals["headings"], [])
+        self.assertEqual(signals["status_phrases_present"], [])
+
+
 HTML_PAGE = """<html><body><main>
 <h1>Cloud app catalog</h1>
 <p>Some services are in development.</p>

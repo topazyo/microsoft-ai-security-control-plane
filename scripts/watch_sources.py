@@ -24,6 +24,10 @@ Design notes
   correctly rejected - moved the fingerprint and escalated for five consecutive
   days. A mixed-scope fingerprint is worse than an unfiltered one, because the
   report line looks scoped and is not.
+* A relevance filter that matches no heading is announced as a `[warn]` and
+  listed in the evidence bundle's `collapsed_filter_sources`. It is not a
+  failure and not a change -- it is a source that fetches cleanly while watching
+  almost nothing, which every later run reports as "unchanged".
 * Failure isolation: each source is fetched independently. A source that cannot
   be fetched is recorded with ok=false, is never reported as changed, and never
   overwrites its stored baseline. Absence of evidence must never look like a
@@ -277,6 +281,20 @@ def extract_signals(
         "heading_count": len(filtered),
         "relevance_filtered": bool(relevance),
     }
+
+
+def filter_collapsed(signals: dict) -> bool:
+    """True when a source declares a relevance filter that matched no heading.
+
+    Not an error and not a change: the fetch succeeded and the fingerprint is
+    honest about what it saw. It is the *coverage* that has gone -- the source is
+    now watching only its page-level text, and every later run will call that
+    "unchanged". Observed live on `sentinel-data-connectors-reference`, whose
+    filter matched 0 of 47 headings because the connector entries on that page
+    are not headings at all; the source had appeared to be watching something
+    only because the phrase signal was, incorrectly, taken over the whole page.
+    """
+    return bool(signals.get("relevance_filtered")) and not signals.get("heading_count")
 
 
 def version_signals(raw: str, pattern: str) -> dict:
@@ -564,6 +582,7 @@ def main() -> int:
     results: dict[str, dict] = {}
     changed_ids: list[str] = []
     failed_ids: list[str] = []
+    collapsed_filter_ids: list[str] = []
     change_notes: dict[str, list[str]] = {}
 
     for source in registry.get("sources", []):
@@ -584,6 +603,23 @@ def main() -> int:
             results[source_id] = kept
             print(f"[warn] {source_id}: fetch/parse failed — baseline preserved: {exc}", file=sys.stderr)
             continue
+
+        # A relevance filter matching zero headings is not a fingerprint event --
+        # it carries no status meaning and must not move a baseline -- but it must
+        # not be silent either. It means the registry is claiming a narrowing it is
+        # not achieving: either the filter is wrong, or the page restructured out
+        # from under it. Either way that source's watched signal has collapsed to
+        # its page-level text, which is indistinguishable from "nothing changed" on
+        # every subsequent run. That indistinguishability is how this class of gap
+        # survives a release, so it is announced.
+        if filter_collapsed(signals):
+            collapsed_filter_ids.append(source_id)
+            print(
+                f"[warn] {source_id}: relevance_filter matched 0 headings — this source's "
+                "watched signal has collapsed to page-level text. The filter or the page "
+                "structure needs a human look; nothing here is a status change.",
+                file=sys.stderr,
+            )
 
         digest = fingerprint(signals)
         record = {
@@ -616,6 +652,11 @@ def main() -> int:
             "generator": "scripts/watch_sources.py",
             "changed_sources": sorted(changed_ids),
             "failed_sources": sorted(failed_ids),
+            # Fetched fine, fingerprinted fine, and watching almost nothing. Kept
+            # separate from failed_sources because the two need opposite responses:
+            # a failed source recovers by itself on the next run, a collapsed
+            # filter never does.
+            "collapsed_filter_sources": sorted(collapsed_filter_ids),
             "change_notes": change_notes,
             "sources": results,
             # Strictly what this run was able to reach, minus the watch-only
@@ -652,6 +693,7 @@ def main() -> int:
         changed=str(bool(changed_ids)).lower(),
         changed_sources=",".join(sorted(changed_ids)),
         failed_sources=",".join(sorted(failed_ids)),
+        collapsed_filter_sources=",".join(sorted(collapsed_filter_ids)),
     )
 
     # Exit 0 even when sources fail: a fetch failure is an expected, isolated
