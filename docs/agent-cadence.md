@@ -468,8 +468,9 @@ rows it backs — to `sources` if a workflow may fetch it, to `human_only_source
 if it may not. As of `schema_version` 2 **both** arrays carry `matrix_rows`
 (integers) and `crosswalk_rows` (strings), and both are validated:
 `registry_problems` rejects an entry that declares neither and an id duplicated
-across the two arrays, and `check_source_coverage` rejects a matrix row that no
-entry claims. Before that, coverage for the human-only half was recorded only in
+across the two arrays, and `check_source_coverage` rejects both a matrix row
+that no entry claims and a claim on a row the matrix does not contain. Before
+that, coverage for the human-only half was recorded only in
 prose inside each entry's `reason`, which is why rows 12 and 13 could sit
 unwatched through a full release without anything being able to say so. A source
 that is not in the registry is never fetched.
@@ -504,7 +505,13 @@ Three constraints, all enforced in code:
 - **`watch_only: true` keeps a framework source out of `allowed_citation_urls`.**
   Watching something must not enlarge what an automated run may claim. Framework
   sources back cross-walk rows, not matrix rows, so `matrix_rows` is omitted;
-  `crosswalk_rows` is documentation for humans and no script reads it.
+  `crosswalk_rows` names the cross-walk row a framework source backs, as that
+  row's own name in the "Framework versions cited" table plus
+  " framework-versions row". It is read, not decorative: `registry_problems` in
+  `scripts/watch_sources.py` type-checks it and rejects an entry that declares
+  neither key, `check_source_coverage` rejects a value that is not a row of that
+  table, and `claimed_crosswalk_rows` is part of how the human-only-backed
+  dated-item count is derived.
 
 **Detection is not judgement, and here it is also not fast.** This tier reports
 *that* an edition changed, never what it means — that stays tier D2 or a human.

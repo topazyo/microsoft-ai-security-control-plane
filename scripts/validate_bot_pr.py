@@ -52,6 +52,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MATRIX = REPO_ROOT / "matrix" / "capability-status-matrix.md"
 REGISTRY = REPO_ROOT / ".github" / "watch-state" / "sources.json"
 CADENCE_DOC = REPO_ROOT / "docs" / "agent-cadence.md"
+CROSSWALK = REPO_ROOT / "crosswalk" / "framework-crosswalk.md"
+
+# A source that backs a cross-walk row names it as the framework's own name in
+# the "Framework versions cited" table plus this suffix. That was a convention
+# held in four registry entries and written down nowhere, so there was nothing
+# for a claim to be wrong against. It is written once, here, and enforced.
+CROSSWALK_ROW_SUFFIX = " framework-versions row"
 
 LEGEND_LABELS = {
     "GA",
@@ -352,7 +359,102 @@ def claimed_crosswalk_rows(entries: list[dict]) -> set[str]:
     return {row for entry in entries for row in entry.get("crosswalk_rows", []) if isinstance(row, str)}
 
 
-def check_source_coverage(findings: Findings) -> None:
+def crosswalk_row_names(text: str) -> set[str]:
+    """Valid `crosswalk_rows` values, derived from the cross-walk itself.
+
+    The authoritative list is the first column of the "Framework versions
+    cited" table -- the same column scripts/stale_guard.py reads as that
+    table's row identifier, extracted with the same cell expression, so the
+    two scripts name a cross-walk row the same way for every table this
+    repository actually commits. They are not the same parser: stale_guard
+    matches the header case-insensitively and skips blank lines inside the
+    table (stale_guard.py:79-84), this one matches "Framework" and
+    "Last verified" case-sensitively and stops at the first blank line. A
+    lower-cased header, or a blank line inserted mid-table, would make them
+    disagree -- which reds this gate rather than passing silently, and that is
+    the intended direction.
+
+    Markdown emphasis is deliberately not normalised: an emphasised name would
+    also silently change stale_guard's identifier, so a red build is the right
+    outcome rather than a divergence hidden by two strippers.
+
+    An empty return is a parse failure, not "nothing to check", and the caller
+    must treat it as an error -- the same rule matrix_row_ids follows.
+    """
+    lines = text.splitlines()
+    header_index = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("|") and "Framework" in stripped and "Last verified" in stripped:
+            header_index = index
+            break
+    if header_index is None:
+        return set()
+    names: set[str] = set()
+    for line in lines[header_index + 2 :]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            break
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if cells and cells[0]:
+            names.add(cells[0] + CROSSWALK_ROW_SUFFIX)
+    return names
+
+
+def orphan_claims(
+    entries: list[dict], array: str, rows: set[int], crosswalk_names: set[str]
+) -> list[str]:
+    """Registry claims that point at nothing -- the converse of `uncovered`.
+
+    `check_source_coverage` asked only "is every matrix row claimed?". The
+    other direction was unasked, so `"matrix_rows": [99]` on a thirteen-row
+    matrix passed every gate and exited 0. That is not cosmetic: an orphan
+    claim inflates the claimed set, so a row that is later renumbered or
+    removed leaves behind a claim that still reads as coverage -- the exact
+    failure this check exists to prevent, in the direction it did not look.
+
+    The strongest case is the quietest one: a typo of an *existing*
+    `human_only_sources` cross-walk name keeps the residue set's cardinality,
+    so the derived "N of the dated items" count stays 4 and check_doc_counts
+    stays green while the registry names a row that does not exist.
+
+    An orphan is an ERROR, not a note. There is no input on which a claim on a
+    non-existent row is legitimate, so the check has no false-positive case to
+    be lenient about, and the repair is one deleted number. A note prints on
+    every run and never changes the exit code, i.e. it is prose in a different
+    font -- and coverage asserted in prose is precisely how rows 12 and 13 sat
+    unwatched through a full release.
+
+    Member *types* are not rechecked here: `registry_problems` in
+    scripts/watch_sources.py owns them, and this function must not read the
+    matrix into that layer.
+    """
+    problems: list[str] = []
+    present = sorted(rows)
+    for entry in entries:
+        identifier = entry.get("id", "<entry with no id>")
+        for row in sorted(claimed_rows([entry])):
+            if row not in rows:
+                problems.append(
+                    f"{REGISTRY.name} entry '{identifier}' ({array}) claims matrix row {row}, "
+                    f"which {MATRIX.name} does not contain (rows present: {present}). Remove "
+                    "the claim, or add the row. An orphan claim inflates the claimed set, so a "
+                    "renumbered or deleted row keeps looking backed by a source."
+                )
+        for name in sorted(claimed_crosswalk_rows([entry])):
+            if name not in crosswalk_names:
+                problems.append(
+                    f"{REGISTRY.name} entry '{identifier}' ({array}) claims cross-walk row "
+                    f"'{name}', which is not a row of the 'Framework versions cited' table in "
+                    f"{CROSSWALK.name}. Valid values are {sorted(crosswalk_names)}. Unlike a "
+                    "matrix claim this one is not filtered anywhere downstream: it also "
+                    "inflates the human-only residue reported below and the "
+                    "'N of the dated items' count check_doc_counts re-derives."
+                )
+    return problems
+
+
+def check_source_coverage(findings: Findings, registry: dict | None = None) -> None:
     """Every matrix row must be claimed by some registry entry.
 
     `registry_problems` in scripts/watch_sources.py checks that each entry
@@ -366,8 +468,14 @@ def check_source_coverage(findings: Findings) -> None:
     breaks. That set is the invariant needed to read `stale_guard.py` output
     correctly — those rows can never be advanced by any agent run, so their
     staleness means "a human is overdue", not "the automation is failing".
+
+    Both directions are now checked. A row nothing claims is a row the cadence
+    silently does not cover; a claim on a row that does not exist is a silent
+    false assertion that it does. Both are errors, and both are reported in
+    the same run — see the ordering note below.
     """
-    registry = load_registry(findings)
+    if registry is None:
+        registry = load_registry(findings)
     if registry is None:
         return
     if not MATRIX.exists():
@@ -377,11 +485,23 @@ def check_source_coverage(findings: Findings) -> None:
     if not rows:
         findings.error("source coverage", "could not read any row identifier from the capability table")
         return
+    if not CROSSWALK.exists():
+        findings.error("source coverage", f"{CROSSWALK} not found")
+        return
+    crosswalk_names = crosswalk_row_names(CROSSWALK.read_text(encoding="utf-8"))
+    if not crosswalk_names:
+        findings.error(
+            "source coverage",
+            "could not read any framework row from the 'Framework versions cited' table in "
+            f"{CROSSWALK.name}, so cross-walk claims cannot be checked against it",
+        )
+        return
 
     watched = registry.get("sources", [])
     human_only = registry.get("human_only_sources", [])
     watched_rows = claimed_rows(watched)
     human_rows = claimed_rows(human_only)
+    row_set = set(rows)
 
     uncovered = [row for row in rows if row not in watched_rows | human_rows]
     for row in uncovered:
@@ -391,7 +511,17 @@ def check_source_coverage(findings: Findings) -> None:
             "'matrix_rows' on the source that backs it, or to a 'human_only_sources' entry "
             "if no automation may fetch it.",
         )
-    if uncovered:
+
+    # Reported *above* the early return, deliberately. The single most likely
+    # edit that creates an orphan — renumbering a row — creates both faults at
+    # once, so if this sat below the return, masking would be the common case
+    # and the maintainer would close the gap and leave the stale claim behind.
+    orphans = orphan_claims(watched, "sources", row_set, crosswalk_names)
+    orphans += orphan_claims(human_only, "human_only_sources", row_set, crosswalk_names)
+    for problem in orphans:
+        findings.error("source coverage", problem)
+
+    if uncovered or orphans:
         return
 
     human_exclusive = sorted(row for row in rows if row in human_rows and row not in watched_rows)

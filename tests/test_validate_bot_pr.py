@@ -61,6 +61,209 @@ class ClaimedRowTests(unittest.TestCase):
         self.assertEqual(validate.claimed_crosswalk_rows(entries), {"NIST row"})
 
 
+class CrosswalkRowNameTests(unittest.TestCase):
+    """The authoritative list of cross-walk row names, derived not assumed.
+
+    `crosswalk_rows` values are free strings, so before this there was nothing
+    to check them against. They are not arbitrary: each is the framework's own
+    name in the "Framework versions cited" table of
+    crosswalk/framework-crosswalk.md plus a fixed suffix -- the same first
+    column scripts/stale_guard.py already treats as that table's row
+    identifier, which is why the two scripts now agree on what a cross-walk
+    row is called.
+    """
+
+    EXPECTED = {
+        "OWASP Top 10 for LLM Applications framework-versions row",
+        "MITRE ATLAS framework-versions row",
+        "NIST AI 600-1 framework-versions row",
+        "CSA AI Controls Matrix (AICM) framework-versions row",
+    }
+
+    def names(self) -> set[str]:
+        return validate.crosswalk_row_names(validate.CROSSWALK.read_text(encoding="utf-8"))
+
+    def test_names_are_derived_from_the_committed_crosswalk(self):
+        """Subset, not equality: adding a framework row is legitimate and
+        unclaimed cross-walk rows are deliberately allowed. Deleting,
+        renaming, or mis-parsing any of these four still fails, which is the
+        property the parser needs pinned."""
+        self.assertLessEqual(self.EXPECTED, self.names())
+
+    def test_every_registered_crosswalk_claim_is_one_of_them(self):
+        registry = validate.load_registry(validate.Findings())
+        claimed = validate.claimed_crosswalk_rows(
+            registry["sources"] + registry["human_only_sources"]
+        )
+        self.assertEqual(claimed - self.names(), set())
+
+    def test_an_unparseable_table_yields_no_names(self):
+        """Empty must become a loud error upstream, not 'nothing to check'."""
+        self.assertEqual(validate.crosswalk_row_names("# no table here\n\nprose\n"), set())
+
+    def test_the_item_level_crosswalk_table_is_not_mistaken_for_it(self):
+        """Only the framework-versions table may define these names."""
+        text = (
+            "| Microsoft control (matrix row) | OWASP LLM 2026 item | Notes (synthesis) |\n"
+            "|---|---|---|\n"
+            "| Row 1 - something | LLM02:2026 | prose |\n"
+        )
+        self.assertEqual(validate.crosswalk_row_names(text), set())
+
+    def test_parsing_stops_at_the_end_of_the_table(self):
+        text = (
+            "| Framework | Version / edition cited | Primary source | Last verified |\n"
+            "|---|---|---|---|\n"
+            "| Some Framework | v1 | url | 2026-01-01 |\n"
+            "\n"
+            "> A blockquote that is not a framework.\n"
+        )
+        self.assertEqual(
+            validate.crosswalk_row_names(text), {"Some Framework framework-versions row"}
+        )
+
+
+class OrphanClaimTests(unittest.TestCase):
+    """The converse of the coverage check: a claim that points at nothing.
+
+    `check_source_coverage` asked only "is every matrix row claimed?", so
+    `"matrix_rows": [99]` on a thirteen-row matrix passed every gate and both
+    scripts exited 0. Every consumer of the claimed sets filters by the matrix,
+    so a matrix orphan changed no output at all; a cross-walk orphan is
+    filtered by nothing and inflates a published count.
+
+    These are the break tests. The orphan registry is injected as a dict
+    through check_source_coverage's `registry` parameter -- the matrix and the
+    cross-walk are still read from the committed files -- because the defect is
+    a registry state this repository must never be in, so it cannot be
+    exercised against the tree as committed.
+    """
+
+    def registry(
+        self,
+        extra_matrix=(),
+        extra_crosswalk=(),
+        drop_row=None,
+        human_matrix=(),
+        human_crosswalk=(),
+    ):
+        rows = validate.matrix_row_ids(validate.MATRIX.read_text(encoding="utf-8"))
+        claimed = [r for r in rows if r != drop_row]
+        return {
+            "sources": [
+                {
+                    "id": "watched",
+                    "matrix_rows": claimed + list(extra_matrix),
+                    "crosswalk_rows": list(extra_crosswalk),
+                }
+            ],
+            "human_only_sources": [
+                {
+                    "id": "human-only",
+                    "matrix_rows": list(human_matrix),
+                    "crosswalk_rows": list(human_crosswalk),
+                }
+            ],
+        }
+
+    def coverage(self, registry) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_source_coverage(findings, registry=registry)
+        return findings
+
+    def test_a_clean_registry_still_passes(self):
+        """A gate that cannot pass is a tripwire; pin the negative case first."""
+        findings = self.coverage(
+            self.registry(extra_crosswalk=["MITRE ATLAS framework-versions row"])
+        )
+        self.assertEqual(findings.errors, [])
+
+    def test_a_claim_on_a_matrix_row_that_does_not_exist_is_an_error(self):
+        findings = self.coverage(self.registry(extra_matrix=[99]))
+        self.assertTrue(
+            any("entry 'watched' (sources) claims matrix row 99" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_a_human_only_entry_is_checked_too(self):
+        """Both arrays, or the array that backs the residue is the unchecked one."""
+        findings = self.coverage(self.registry(human_matrix=[99]))
+        self.assertTrue(
+            any(
+                "entry 'human-only' (human_only_sources) claims matrix row 99" in e
+                for e in findings.errors
+            ),
+            findings.errors,
+        )
+
+    def test_a_claim_on_a_crosswalk_row_that_does_not_exist_is_an_error(self):
+        findings = self.coverage(
+            self.registry(human_crosswalk=["Imaginary Framework framework-versions row"])
+        )
+        self.assertTrue(
+            any(
+                "claims cross-walk row 'Imaginary Framework framework-versions row'" in e
+                for e in findings.errors
+            ),
+            findings.errors,
+        )
+
+    def test_a_typo_of_an_existing_crosswalk_name_is_caught(self):
+        """The quietest case, and the one that passed before this check.
+
+        A typo of an existing human-only name keeps the residue set's
+        cardinality, so the derived 'N of the dated items' count stays 4 and
+        check_doc_counts stays green while the registry names a row that does
+        not exist.
+        """
+        findings = self.coverage(
+            self.registry(human_crosswalk=["NIST AI 600-01 framework-versions row"])
+        )
+        self.assertTrue(
+            any("NIST AI 600-01 framework-versions row" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_an_orphan_is_reported_alongside_a_genuine_gap(self):
+        """Ordering: `if uncovered: return` must not mask the orphan.
+
+        Renumbering a row is the likeliest way to create an orphan and it
+        creates both faults in one edit, so if the orphan check sat below that
+        early return the masking case would be the common case -- the
+        maintainer would close the visible gap and leave the stale claim.
+        """
+        rows = validate.matrix_row_ids(validate.MATRIX.read_text(encoding="utf-8"))
+        last = rows[-1]
+        findings = self.coverage(self.registry(extra_matrix=[99], drop_row=last))
+        self.assertTrue(
+            any(f"matrix row {last} is claimed by no entry" in e for e in findings.errors),
+            findings.errors,
+        )
+        self.assertTrue(
+            any("claims matrix row 99" in e for e in findings.errors), findings.errors
+        )
+
+    def test_an_error_suppresses_the_coverage_notes(self):
+        """No reassuring note beside a failure.
+
+        The residue note is a set difference with no authoritative filter of
+        its own, so an orphan cross-walk claim would make the note assert a
+        dated item that does not exist.
+        """
+        findings = self.coverage(self.registry(extra_matrix=[99]))
+        self.assertEqual(findings.notes, [])
+
+    def test_an_unreadable_crosswalk_fails_rather_than_skips(self):
+        """A parse failure must not degrade to a vacuous pass."""
+        original = validate.CROSSWALK
+        validate.CROSSWALK = validate.REPO_ROOT / "crosswalk" / "does-not-exist.md"
+        try:
+            findings = self.coverage(self.registry())
+        finally:
+            validate.CROSSWALK = original
+        self.assertTrue(any("not found" in e for e in findings.errors), findings.errors)
+
+
 class LiveRepositoryTests(unittest.TestCase):
     """The committed repository must pass both checks.
 
