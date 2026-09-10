@@ -132,10 +132,10 @@ class RelevanceScopingTests(unittest.TestCase):
         self.assertNotEqual(watch.fingerprint(before), watch.fingerprint(after))
         notes = watch.describe_change(before, after)
         self.assertIn(
-            "status phrase appeared in relevance-scoped sections: 'generally available'", notes
+            "status phrase appeared in in-scope entries: 'generally available'", notes
         )
         self.assertIn(
-            "status phrase disappeared from relevance-scoped sections: 'in preview'", notes
+            "status phrase disappeared from in-scope entries: 'in preview'", notes
         )
 
     def test_nested_subsection_inherits_scope_from_its_parent(self):
@@ -713,6 +713,222 @@ class CollapsibleEntryTests(unittest.TestCase):
         self.assertFalse(signals["relevance_filtered"])
 
 
+COPILOT_TITLE = "<summary><strong>Microsoft Copilot</strong></summary>"
+
+
+class AtomicEntryTests(unittest.TestCase):
+    """A collapsible entry owns everything inside it, headings included.
+
+    Emitting an entry at COLLAPSIBLE_LEVEL made any heading inside it a
+    *sibling*: a heading is always a shallower level, so it popped the entry off
+    the ancestor stack and the rest of the entry's body silently left scope.
+    Measured on the live Sentinel page before the fix — one `<h3>` inside the
+    matched entry took the scoped text from 5,184 to 4,010 characters with the
+    fingerprint unchanged, so a "generally available" sentence under it was
+    missed while the identical sentence with no heading was caught. 37 of that
+    page's 46 authored headings already sit inside connector entries.
+    """
+
+    def test_a_heading_inside_a_matched_entry_does_not_evict_its_body(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            COPILOT_TITLE,
+            COPILOT_TITLE + "<h3>Configuration Steps</h3>"
+            "<p>This connector is generally available.</p>",
+        )
+        self.assertIn(
+            "generally available", connector_signals(document)["status_phrases_present"]
+        )
+
+    def test_an_entry_internal_heading_is_not_a_page_section(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            COPILOT_TITLE, COPILOT_TITLE + "<h3>Configuration Steps</h3>"
+        )
+        self.assertNotIn(
+            "Configuration Steps", watch.section_headings(watch.html_sections(document))
+        )
+
+    def test_the_stray_h1_inside_an_entry_is_not_a_section_at_all(self):
+        """The root cause of the 31%-of-the-page leak, rather than the rule for it."""
+        self.assertNotIn(
+            "NOTE - UPDATE:", watch.section_headings(watch.html_sections(CONNECTOR_REFERENCE_PAGE))
+        )
+
+    def test_a_nested_disclosure_inside_a_matched_entry_stays_in_scope(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            COPILOT_TITLE,
+            COPILOT_TITLE + "<details><summary>Prerequisites</summary>"
+            "<p>This connector is generally available.</p></details>",
+        )
+        self.assertIn(
+            "generally available", connector_signals(document)["status_phrases_present"]
+        )
+
+    def test_a_nested_entry_title_is_not_its_own_section(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            COPILOT_TITLE,
+            COPILOT_TITLE + "<details><summary>Prerequisites</summary><p>Read this.</p></details>",
+        )
+        self.assertNotIn(
+            "Prerequisites", watch.section_headings(watch.html_sections(document))
+        )
+
+    def test_an_out_of_scope_entrys_internal_heading_stays_out(self):
+        """Clipping must not become a way for out-of-scope text to enter scope."""
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<details><summary><strong>Kubernetes audit</strong></summary>",
+            "<details><summary><strong>Kubernetes audit</strong></summary>"
+            "<h3>Notes</h3><p>This connector is generally available.</p>",
+        )
+        self.assertNotIn(
+            "generally available", connector_signals(document)["status_phrases_present"]
+        )
+
+    def test_unbalanced_disclosures_stop_clipping_rather_than_over_clipping(self):
+        """Fail open: refusing to clip is noisy, over-clipping is silent.
+
+        An unclosed `<details>` would otherwise leave every later boundary at
+        depth >= 1 and drop it, removing real entries from the heading list with
+        no sign that anything was lost.
+        """
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<p>This connector ingests Defender for Office 365 alerts.</p>\n</details>",
+            "<p>This connector ingests Defender for Office 365 alerts.</p>",
+        )
+        self.assertIsNone(
+            watch.disclosure_depths(
+                watch.CHROME_ELEMENTS.sub(" ", document)
+            )
+        )
+        self.assertIn(
+            "Microsoft Copilot", watch.section_headings(watch.html_sections(document))
+        )
+
+    def test_balanced_disclosures_are_measured_not_assumed(self):
+        marks = watch.disclosure_depths(
+            watch.CHROME_ELEMENTS.sub(" ", CONNECTOR_REFERENCE_PAGE)
+        )
+        self.assertIsNotNone(marks)
+
+
+class DocumentTitleTests(unittest.TestCase):
+    """Only a heading at PAGE_LEVEL may claim the title slot.
+
+    An earlier version let any authored heading claim it, reasoning that a
+    level-1 heading appearing after other headings must be a stray. One `<h2>`
+    above the article `<h1>` then demoted the real title, the page's lead-in left
+    scope, and row 9's banner vanished from the phrase set — reported only as a
+    phrase *disappearing*, which reads as a source change. That is the false
+    absence this change retracts, rebuilt in code.
+    """
+
+    def test_an_h2_above_the_title_does_not_demote_it(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<h1>Find your Microsoft Sentinel data connector</h1>",
+            "<h2>Feedback</h2><h1>Find your Microsoft Sentinel data connector</h1>",
+        )
+        self.assertIn("in preview", connector_signals(document)["status_phrases_present"])
+
+    def test_a_second_title_level_heading_is_still_a_stray(self):
+        """Narrowing the rule must not give up what it was narrowed from."""
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<h2>Sentinel data connectors</h2>",
+            "<h1>Appendix</h1><p>These connectors are retired.</p>"
+            "<h2>Sentinel data connectors</h2>",
+        )
+        self.assertNotIn("retired", connector_signals(document)["status_phrases_present"])
+
+    def test_a_page_with_a_title_is_not_flagged(self):
+        self.assertFalse(watch.title_missing(watch.html_sections(CONNECTOR_REFERENCE_PAGE)))
+
+    def test_a_page_with_no_title_level_heading_is_announced(self):
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<h1>Find your Microsoft Sentinel data connector</h1>",
+            "<h2>Find your Microsoft Sentinel data connector</h2>",
+        )
+        self.assertTrue(watch.title_missing(watch.html_sections(document)))
+
+    def test_the_warning_is_not_a_change_and_not_an_error(self):
+        """Same contract as filter_collapsed: coverage, never status."""
+        document = CONNECTOR_REFERENCE_PAGE.replace(
+            "<h1>Find your Microsoft Sentinel data connector</h1>",
+            "<h2>Find your Microsoft Sentinel data connector</h2>",
+        )
+        signals = connector_signals(document)
+        self.assertNotIn("title_missing", signals)
+        self.assertNotIn("coverage", " ".join(signals))
+
+
+class PhraseRegionTests(unittest.TestCase):
+    """Page-level text and in-scope entries are fingerprinted separately.
+
+    Row 9's conflict is a page-wide banner against a per-entry label, so a
+    detector that unions the two cannot see it resolve. Measured on the live page
+    before the split: adding "This connector is in preview." to the watched entry
+    left the fingerprint identical and produced no change note, because the
+    banner already supplied `in preview` — while the same sentence phrased "in
+    public preview" was caught, which is what made the gap easy to miss. It is
+    also the exact falsifier of the matrix's published claim that this entry's
+    body carries no release-state sentence.
+    """
+
+    def test_a_per_entry_preview_sentence_is_detected_despite_the_banner(self):
+        before = connector_signals()
+        after = connector_signals(
+            CONNECTOR_REFERENCE_PAGE.replace(
+                COPILOT_TITLE, COPILOT_TITLE + "<p>This connector is in preview.</p>"
+            )
+        )
+        self.assertEqual(before["status_phrases_present"], after["status_phrases_present"])
+        self.assertNotEqual(watch.fingerprint(before), watch.fingerprint(after))
+        self.assertIn(
+            "status phrase appeared in in-scope entries: 'in preview'",
+            watch.describe_change(before, after),
+        )
+
+    def test_the_banner_is_attributed_to_page_level_text(self):
+        signals = connector_signals()
+        self.assertEqual(signals["page_level_status_phrases"], ["in preview"])
+        self.assertEqual(signals["entry_status_phrases"], [])
+
+    def test_the_union_field_still_carries_both_regions(self):
+        signals = connector_signals(
+            CONNECTOR_REFERENCE_PAGE.replace(
+                COPILOT_TITLE, COPILOT_TITLE + "<p>This connector is generally available.</p>"
+            )
+        )
+        self.assertEqual(
+            signals["status_phrases_present"], ["generally available", "in preview"]
+        )
+        self.assertEqual(signals["entry_status_phrases"], ["generally available"])
+
+    def test_an_unfiltered_source_carries_no_region_fields(self):
+        """Omitted, not empty, so the 18 unfiltered fingerprints are untouched."""
+        signals = html_signals(CONNECTOR_REFERENCE_PAGE, relevance=None)
+        self.assertNotIn("page_level_status_phrases", signals)
+        self.assertNotIn("entry_status_phrases", signals)
+
+    def test_an_unfiltered_change_note_still_says_whole_page(self):
+        before = markdown_signals(RELEASE_NOTES, relevance=None)
+        after = markdown_signals(RELEASE_NOTES_WITH_SQL_RETIREMENT, relevance=None)
+        self.assertEqual(
+            watch.describe_change(before, after),
+            ["status phrase appeared in whole page: 'retired'"],
+        )
+
+    def test_a_banner_change_is_attributed_to_page_level(self):
+        before = connector_signals()
+        after = connector_signals(
+            CONNECTOR_REFERENCE_PAGE.replace(
+                "are currently in <strong>Preview</strong>", "are generally available"
+            )
+        )
+        notes = watch.describe_change(before, after)
+        self.assertIn("status phrase disappeared from page-level text: 'in preview'", notes)
+        self.assertIn(
+            "status phrase appeared in page-level text: 'generally available'", notes
+        )
+
+
 class CommittedRegistryWatchTests(unittest.TestCase):
     """The registry's row-9 filter must be the one the fix makes work.
 
@@ -740,6 +956,101 @@ class CommittedRegistryWatchTests(unittest.TestCase):
 
     def test_the_source_still_backs_row_9(self):
         self.assertIn(9, self.entry["matrix_rows"])
+
+
+class CommittedBaselineInvariantTests(unittest.TestCase):
+    """Network-free assertions over the committed baseline itself.
+
+    A re-baseline is otherwise self-confirming: the only thing validating the
+    stored signal is the mechanism that wrote it, and `watch_sources.py` exits 0
+    unconditionally, so a future scope collapse would be a stderr `[warn]` inside
+    a green run — indistinguishable from a healthy source for as long as nobody
+    re-derives it by hand. These run in the existing validate job, need no
+    network, and turn that class of drift into a red build.
+    """
+
+    def setUp(self):
+        self.baseline = json.loads(
+            (REPO_ROOT / ".github" / "watch-state" / "fingerprints.json").read_text(encoding="utf-8")
+        )
+        self.registry = json.loads(
+            (REPO_ROOT / ".github" / "watch-state" / "sources.json").read_text(encoding="utf-8")
+        )
+        self.stored = self.baseline["sources"]
+        self.html_ids = [s["id"] for s in self.registry["sources"] if s.get("mode") == "html"]
+
+    def test_the_baseline_records_the_extractor_that_produced_it(self):
+        """Re-baselining without bumping, or bumping without re-baselining, fails here."""
+        self.assertEqual(self.baseline.get("extractor_version"), watch.EXTRACTOR_VERSION)
+
+    def test_every_source_fetched_successfully(self):
+        """The standing guard: a baseline must not enshrine an unreachable source."""
+        failed = [sid for sid, record in self.stored.items() if not record.get("ok")]
+        self.assertEqual(failed, [])
+
+    def test_no_html_source_still_carries_the_navigation_heading(self):
+        offenders = [
+            sid for sid in self.html_ids
+            if "In this article" in (self.stored[sid]["signals"].get("headings") or [])
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_heading_count_agrees_with_the_heading_list(self):
+        mismatched = [
+            sid for sid, record in self.stored.items()
+            if "heading_count" in record.get("signals", {})
+            and record["signals"]["heading_count"] != len(record["signals"].get("headings") or [])
+        ]
+        self.assertEqual(mismatched, [])
+
+    def test_no_filtered_source_has_a_collapsed_filter(self):
+        """The condition that hid row 9's missing watch for a release."""
+        collapsed = [
+            sid for sid, record in self.stored.items()
+            if record.get("signals", {}).get("relevance_filtered")
+            and not record["signals"].get("heading_count")
+        ]
+        self.assertEqual(collapsed, [])
+
+    def test_every_filtered_source_carries_both_phrase_regions(self):
+        missing = [
+            sid for sid, record in self.stored.items()
+            if record.get("signals", {}).get("relevance_filtered")
+            and not {"page_level_status_phrases", "entry_status_phrases"} <= set(record["signals"])
+        ]
+        self.assertEqual(missing, [])
+
+    def test_no_unfiltered_source_carries_a_phrase_region(self):
+        """Omitted rather than empty, which is what keeps 18 fingerprints untouched."""
+        signals = [
+            record["signals"] for record in self.stored.values()
+            if "relevance_filtered" in record.get("signals", {})
+            and not record["signals"]["relevance_filtered"]
+        ]
+        self.assertTrue(signals)
+        for entry in signals:
+            self.assertNotIn("page_level_status_phrases", entry)
+            self.assertNotIn("entry_status_phrases", entry)
+
+    def test_row_9s_source_watches_both_of_its_published_evidence_points(self):
+        signals = self.stored["sentinel-data-connectors-reference"]["signals"]
+        self.assertEqual(
+            signals["headings"],
+            ["Microsoft Copilot", "Microsoft Defender for Office 365 (Preview)"],
+        )
+        self.assertEqual(
+            signals["preview_qualified_headings"],
+            ["Microsoft Defender for Office 365 (Preview)"],
+        )
+        self.assertEqual(signals["page_level_status_phrases"], ["in preview"])
+
+    def test_the_stored_fingerprint_matches_the_stored_signals(self):
+        """Cheap, and it catches a hand-edited baseline."""
+        wrong = [
+            sid for sid, record in self.stored.items()
+            if record.get("ok") and watch.fingerprint(record["signals"]) != record["fingerprint"]
+        ]
+        self.assertEqual(wrong, [])
 
 
 if __name__ == "__main__":

@@ -91,8 +91,12 @@ test: every primary-source URL in the matrix must appear in the evidence bundle'
 Fingerprinting a whole rendered page produces a false positive nearly every run —
 navigation, feedback widgets and per-render tokens all change independently of
 the documentation. The watcher instead extracts **status signals** and
-fingerprints those: section headings, which headings carry a `(preview)`
-qualifier, and which status-bearing phrases are present.
+fingerprints those: section headings **and the titles of collapsible reference
+entries**, because a page may list every entry it documents as a `<details>`
+disclosure and never as a heading; which of those titles carry a `(preview)`
+qualifier; and which status-bearing phrases are present — reported for the
+page's own page-level text and for its in-scope entries *separately*, since a
+page-wide release-state banner and a per-entry label are different claims.
 
 Broad release-notes pages need a further narrowing. The Defender for Cloud
 release notes carry dozens of entries for products outside this repository's
@@ -164,12 +168,17 @@ and that escalation would have had no visible cause on the page at all.
 
 Two consequences to know before reading a `[changed]` line:
 
-- **The change note states its scope.** `status phrase appeared in
-  relevance-scoped sections: 'retired'`, versus `... in whole page: ...`. A line
+- **The change note states its scope**, in one of three forms: `status phrase
+  appeared in page-level text: 'retired'` and `... in in-scope entries: ...` for
+  a filtered source, and `... in whole page: ...` for an unfiltered one. A line
   that cannot be attributed to a scope cannot be interpreted without re-fetching
   and re-reading the page, and a detector whose alarms cannot be interpreted
   trains its maintainer to stop reading them. That is the cost that mattered
-  here, more than the wasted runs.
+  here, more than the wasted runs. For the same reason a `[changed]` line is
+  never left without a note: where no reported field differs — which a signals
+  *schema* addition does, since it moves every affected fingerprint while no
+  measured value changed — the run says exactly that instead of printing a bare
+  source id.
 - **Scoping moved the fingerprint of the filtered sources only.** An unfiltered
   source's phrase set is still taken over its whole page text verbatim, so its
   stored fingerprint is untouched. Measured against the live sources on
@@ -197,11 +206,40 @@ the scope and the coverage that was never really there becomes visible.
 
 **That warning is what surfaced issue #31, and the source it flagged is now
 watched.** Collapsible entries are sections, so the filter reaches the two entry
-titles row 9's published evidence rests on; the page-level notice is covered by
-the page-level rule rather than by a pattern; and the filter no longer declares a
-pattern the code could not match. The warning itself is left exactly as it was —
-it did what it was built to do, and it is the only reason anyone looked at this
-source at all.
+titles row 9's published evidence rests on — **2 of that page's 437 titles**, as
+measured on **2026-09-10**; the page-level notice is covered by the page-level
+rule rather than by a pattern; and the filter no longer declares a pattern the
+code could not match. As of that date **no source's filter collapses**, so this
+warning fires on nothing — which is worth stating, because a section describing a
+warning nobody has seen fire is otherwise indistinguishable from a warning that
+is broken. The mechanism is left exactly as it was: it did what it was built to
+do, and it is the only reason anyone looked at this source at all.
+
+### The decision this took, and the two options that were not taken
+
+Issue #31 escalated row 9's watch to a human as a design decision and named two
+remedies. **(a) Add a body-scoped relevance mode**, so a filter could select
+sections by content rather than by heading — the general fix, and the one that
+would have made the registry's claim about the page-level notice true. **(b)
+Accept that the page cannot usefully be watched**, move it to
+`human_only_sources`, and stop implying row 9 has automated coverage — cheaper,
+and honest.
+
+Neither was taken, and the reason is that re-deriving the page refuted the
+premise both rested on. The page *can* be watched. Three separable defects in
+section extraction were preventing it: chrome headings owning the article
+lead-in, page-level being read as a heading *level* rather than a position, and
+collapsible entries not being sections at all. Fixing those three needs no new
+registry key, no new mode, and no schema change, and it left the declared filter
+matching exactly the two entry titles row 9's own quotes cite.
+
+So (a) was declined as unnecessary — a body-scoped mode would have worked around
+a heading extractor that was simply wrong about what a heading is on this page —
+and (b) was declined because it would have been an honest answer to a false
+premise: conceding a page is unwatchable is only honest once you have established
+that it is. Recording this here rather than leaving it implied, because a design
+decision that shows up only as an absence is the failure mode this document
+argues against elsewhere; the issue itself carries the measurements.
 
 The watcher says so. `filter_collapsed` flags any source whose declared
 filter matches no heading, the run prints a `[warn]`, and the evidence bundle

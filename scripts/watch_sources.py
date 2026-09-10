@@ -12,11 +12,16 @@ change means. Assigning a status label is tier D2's job (see
 
 Design notes
 ------------
-* The fingerprint is taken over extracted *signals* (section headings, which
-  headings carry a "(preview)" qualifier, and status-bearing phrases), not over
-  the raw page. Rendered Microsoft Learn pages carry navigation, feedback
-  widgets and per-render tokens that change constantly; fingerprinting the whole
-  page would produce a false positive nearly every run.
+* The fingerprint is taken over extracted *signals*, not over the raw page.
+  Rendered Microsoft Learn pages carry navigation, feedback widgets and
+  per-render tokens that change constantly; fingerprinting the whole page would
+  produce a false positive nearly every run. The signals are: section headings
+  **and the titles of collapsible reference entries**, since a page may list its
+  entries as `<details>` disclosures and never as headings; which of those carry
+  a "(preview)" qualifier; and which status-bearing phrases appear. For a
+  filtered source the phrases are reported for the page's own page-level text and
+  for its in-scope entries *separately* — see relevance_scoped_parts, and note
+  that anything reading the `headings` field is reading entry titles too.
 * Every signal field is computed at the *same scope*. Where a source declares a
   `relevance_filter`, that scope is the filtered sections and nothing else. An
   earlier version filtered the heading fields but took the phrase field over the
@@ -46,6 +51,7 @@ Standard library only: no third-party dependency, no pip install step in CI.
 from __future__ import annotations
 
 import argparse
+import bisect
 import hashlib
 import html
 import json
@@ -61,6 +67,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = REPO_ROOT / ".github" / "watch-state"
 SOURCES_FILE = STATE_DIR / "sources.json"
 BASELINE_FILE = STATE_DIR / "fingerprints.json"
+
+# Bumped whenever a change to signal *extraction* moves stored fingerprints while
+# no source has changed. It exists because a re-baseline is otherwise
+# self-confirming: the only thing validating the new stored signal is the
+# mechanism that produced it, and "the extractor changed" is exactly the
+# explanation a genuine upstream change could hide behind. Recorded at the top
+# level of fingerprints.json, outside every per-source `signals` object, so it
+# changes no fingerprint; a baseline with no marker predates this and is version 1.
+# tests/test_watch_sources.py fails when the committed baseline disagrees, which
+# turns "re-baselined without bumping" and "bumped without re-baselining" into a
+# red CI run instead of a silent drift in what the repository believes it watches.
+EXTRACTOR_VERSION = 2
 
 USER_AGENT = (
     "microsoft-ai-security-control-plane-watcher/1.0 "
@@ -232,6 +250,7 @@ SHELL_COLLAPSIBLE = re.compile(
 # Below `<h4>`, so a collapsible entry always nests under the heading that
 # precedes it, is never mistaken for the document title, and is never page-level.
 COLLAPSIBLE_LEVEL = 5
+DISCLOSURE_EDGE = re.compile(r"<details\b[^>]*>|</details\s*>", re.IGNORECASE)
 
 
 def heading_text(fragment: str) -> str | None:
@@ -254,6 +273,39 @@ def shell_entry_offsets(body: str) -> set[int]:
     return {match.end() for match in SHELL_COLLAPSIBLE.finditer(body)}
 
 
+def disclosure_depths(body: str) -> tuple[list[int], list[int]] | None:
+    """Nesting depth inside `<details>` after each disclosure edge, or None.
+
+    `None` means the page's disclosures do not balance, and every caller then
+    treats the whole document as depth 0 — i.e. stops clipping. **That direction
+    is deliberate.** Clipping is what makes an entry atomic, so over-counting
+    depth after one unclosed tag would drop every later entry out of the heading
+    list silently; refusing to clip at all merely restores the noisier behaviour
+    that predates it. Measured on all 16 live html sources on 2026-09-10: every
+    one balances exactly (432/432 disclosures on the Sentinel reference, 3/3 —
+    the page shell's own — everywhere else), so this is a guard, not a workaround.
+    """
+    positions: list[int] = []
+    depths: list[int] = []
+    depth = 0
+    for match in DISCLOSURE_EDGE.finditer(body):
+        depth += 1 if match.group(0)[1] != "/" else -1
+        if depth < 0:
+            return None
+        positions.append(match.start())
+        depths.append(depth)
+    return None if depth else (positions, depths)
+
+
+def disclosure_depth_at(marks: tuple[list[int], list[int]] | None, position: int) -> int:
+    """How many `<details>` elements enclose `position`."""
+    if marks is None:
+        return 0
+    positions, depths = marks
+    index = bisect.bisect_right(positions, position) - 1
+    return depths[index] if index >= 0 else 0
+
+
 def html_sections(document: str) -> list[tuple[int, str | None, str]]:
     """Split a page into sections at every heading and every collapsible entry.
 
@@ -273,19 +325,38 @@ def html_sections(document: str) -> list[tuple[int, str | None, str]]:
     Collapsible entries are boundaries too, at `COLLAPSIBLE_LEVEL` — see
     `COLLAPSIBLE_ENTRY` for why a page can carry its real entries there and
     nowhere else.
+
+    **A collapsible entry is atomic: everything inside it is its body, including
+    any heading or nested disclosure.** Without that, an entry's own sub-heading
+    became a *sibling* section — a heading is always a shallower level than
+    `COLLAPSIBLE_LEVEL`, so it popped the entry off `relevance_scoped_text`'s
+    ancestor stack and silently evicted the remainder of the entry's body from
+    scope. Measured on the Sentinel reference: one `<h3>` placed inside the
+    matched Copilot entry dropped the scoped text from 5,184 to 4,010 characters
+    **with the fingerprint unchanged**, so a "generally available" sentence under
+    that heading went undetected while the identical sentence without the heading
+    was caught. Not hypothetical — 37 of that page's 46 authored headings already
+    sit inside connector entries; the tracked entry simply had none yet. A nested
+    disclosure did the same thing for the same reason. Treating an entry as a leaf
+    fixes both, and it is also what makes the mis-authored `<h1>` inside one
+    connector entry stop being page-level at the root rather than by rule.
     """
     main = re.search(r"<main\b[^>]*>(.*?)</main>", document, re.DOTALL | re.IGNORECASE)
     body = CHROME_ELEMENTS.sub(" ", main.group(1) if main else document)
 
     shell = shell_entry_offsets(body)
+    marks = disclosure_depths(body)
     boundaries: list[tuple[int, int, str]] = [
         (match.start(), int(match.group(1)), match.group(2))
         for match in HTML_HEADING.finditer(body)
+        if disclosure_depth_at(marks, match.start()) == 0
     ]
     boundaries += [
         (match.start(), COLLAPSIBLE_LEVEL, match.group(1))
         for match in COLLAPSIBLE_ENTRY.finditer(body)
-        if match.start() not in shell
+        # Depth 1 is an entry's own label. Deeper is a disclosure nested inside
+        # an entry, which belongs to that entry's body like any other markup.
+        if match.start() not in shell and disclosure_depth_at(marks, match.start()) <= 1
     ]
     boundaries.sort(key=lambda boundary: boundary[0])
 
@@ -294,12 +365,12 @@ def html_sections(document: str) -> list[tuple[int, str | None, str]]:
     heading: str | None = None
     start = 0
     for position, boundary_level, fragment in boundaries:
+        # A boundary with no visible title is still a boundary; it simply has no
+        # title for a filter to match, so its section is out of scope unless it
+        # inherits. Skipping it instead would hand its body to the *previous*
+        # section — and if that one matched the filter, an untitled disclosure
+        # would quietly donate its contents to a watched entry.
         text = heading_text(fragment)
-        # An empty title is not a section. Carrying it would open a section whose
-        # heading is None, and `relevance_scoped_text` reads that as page-level —
-        # so an empty `<summary>` would quietly force its body into scope.
-        if text is None:
-            continue
         sections.append((level, heading, strip_html(body[start:position])))
         level = boundary_level
         heading = text
@@ -407,40 +478,85 @@ def relevance_scoped_text(
     scope as an *ancestor* would make every section on the page inherit it and
     restore the unfiltered behaviour this function exists to remove.
     """
+    return "\n".join(body for _page_level, body in relevance_scoped_parts(sections, patterns))
+
+
+def relevance_scoped_parts(
+    sections: list[tuple[int, str | None, str]], patterns: list[str] | None
+) -> list[tuple[bool, str]]:
+    """The scoped text, in document order, each part tagged page-level or not.
+
+    `relevance_scoped_text` is the concatenation; the tag exists because the two
+    regions have to be fingerprinted *separately*. Unioning them hid the change
+    row 9 exists to catch: the page-wide banner permanently contributes the phrase
+    `in preview`, so a per-entry preview sentence appearing in the watched entry
+    produced an identical fingerprint and no change note at all — while the same
+    sentence phrased "in public preview" was caught, which is what makes the gap
+    so easy to miss. Row 9's whole conflict is *page-wide banner versus per-entry
+    label*, and a detector that cannot tell the two regions apart cannot see that
+    conflict resolve in either direction. It is also the exact falsifier of the
+    matrix's published claim that the tracked entry's "body contains no
+    release-state sentence at all".
+    """
     if not patterns:
-        return "\n".join(body for _level, _heading, body in sections)
+        return [(False, "\n".join(body for _level, _heading, body in sections))]
     compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
-    kept: list[str] = []
+    kept: list[tuple[bool, str]] = []
     ancestors: list[tuple[int, bool]] = []
     title_seen = False
-    for level, heading, body in sections:
+    for index, (level, heading, body) in enumerate(sections):
         while ancestors and ancestors[-1][0] >= level:
             ancestors.pop()
+        # Two page-level cases and no others. The text above the first boundary,
+        # which is section 0 alone -- **the index matters**: a later section can
+        # also carry no heading, when a boundary has no visible title, and reading
+        # *that* as page-level would force an untitled disclosure's body into
+        # scope on every page that has one. And the document title, which does not
+        # include a heading at PAGE_LEVEL appearing after one already has.
         if heading is None:
-            # Text above the first heading. Kept, and pushed as *not* in scope so
-            # children do not inherit it. Does not consume the title: the title is
-            # the first heading, which has not been reached yet.
-            kept.append(body)
+            if index == 0:
+                kept.append((True, body))
+                ancestors.append((level, False))
+                continue
+        elif level <= PAGE_LEVEL and not title_seen:
+            title_seen = True
+            kept.append((True, body))
             ancestors.append((level, False))
             continue
-        if level <= PAGE_LEVEL and not title_seen:
-            title_seen = True
-            kept.append(body)
-            ancestors.append((level, False))
-            continue
-        # Only an authored heading consumes the title slot. A collapsible entry
-        # must not: Learn emits its page-shell disclosures above the `<h1>`, and
-        # letting one of those claim "first heading" would demote the real title
-        # to a stray and scope the page's own lead-in out.
-        if level < COLLAPSIBLE_LEVEL:
-            title_seen = True
-        in_scope = bool(ancestors and ancestors[-1][1]) or any(
-            c.search(heading) for c in compiled
+        # **Only a heading at PAGE_LEVEL can consume the title slot.** An earlier
+        # version let any authored heading do it, on the theory that a level-1
+        # heading appearing after other headings must be a stray. The cost was
+        # far worse than the case it guarded: a single `<h2>` above the article
+        # `<h1>` — one Learn template edit away — demoted the real title, so the
+        # page's own lead-in left scope and row 9's banner vanished from the
+        # phrase set with no warning, reported only as a phrase *disappearing*.
+        # That is the shape of the false absence claim this change retracts,
+        # rebuilt in code. `title_missing` announces the residual case instead.
+        in_scope = bool(ancestors and ancestors[-1][1]) or (
+            heading is not None and any(c.search(heading) for c in compiled)
         )
         ancestors.append((level, in_scope))
         if in_scope:
-            kept.append(body)
-    return "\n".join(kept)
+            kept.append((False, body))
+    return kept
+
+
+def title_missing(sections: list[tuple[int, str | None, str]]) -> bool:
+    """True when a page has no heading at `PAGE_LEVEL` for the title rule to keep.
+
+    Only meaningful for a filtered source, and it is a coverage warning rather
+    than an error. Page-level text is what carries a page-wide release-state
+    banner, and it is kept in scope by exactly two things: the text above the
+    first heading, and the document title's section. A page with no title-level
+    heading has only the first of those, so a banner sitting below any other
+    heading is out of scope — silently, and reported at most as a phrase that
+    disappeared, which reads as a source change rather than as lost coverage.
+    That misreading is precisely what this change retracts a published claim for,
+    so the condition is announced in the same way a collapsed filter is.
+    """
+    return not any(
+        heading is not None and level <= PAGE_LEVEL for level, heading, _body in sections
+    )
 
 
 def extract_signals(
@@ -461,15 +577,30 @@ def extract_signals(
     """
     headings = section_headings(sections)
     filtered = apply_relevance_filter(headings, relevance)
-    scoped = relevance_scoped_text(sections, relevance) if relevance else text
+    parts = relevance_scoped_parts(sections, relevance) if relevance else []
+    scoped = "\n".join(body for _page_level, body in parts) if relevance else text
     lowered = scoped.lower()
-    return {
+    signals = {
         "headings": filtered,
         "preview_qualified_headings": sorted(h for h in filtered if PREVIEW_QUALIFIER.search(h)),
         "status_phrases_present": sorted(p for p in STATUS_PHRASES if p in lowered),
         "heading_count": len(filtered),
         "relevance_filtered": bool(relevance),
     }
+    if relevance:
+        # Only a filtered source has two regions to tell apart; an unfiltered one
+        # reads its whole page and the split would be meaningless. Omitted rather
+        # than emitted empty, so the 18 unfiltered sources' stored fingerprints
+        # are untouched by this field existing at all.
+        for field, page_level_wanted in (
+            ("page_level_status_phrases", True),
+            ("entry_status_phrases", False),
+        ):
+            region = "\n".join(
+                body for page_level, body in parts if page_level is page_level_wanted
+            ).lower()
+            signals[field] = sorted(p for p in STATUS_PHRASES if p in region)
+    return signals
 
 
 def filter_collapsed(signals: dict) -> bool:
@@ -520,13 +651,20 @@ def version_signals(raw: str, pattern: str) -> dict:
     }
 
 
-def signals_for_source(source: dict) -> dict:
+def signals_for_source(source: dict) -> tuple[dict, list[str]]:
+    """The source's signals, plus any *coverage* warnings about how they were taken.
+
+    Warnings are returned beside the signals rather than stored in them, because
+    everything in the signals dict is fingerprinted wholesale: a coverage note
+    inside it would make "this source is watching less than it claims" look like a
+    status change, which is the one confusion this tier exists to prevent.
+    """
     mode = source["mode"]
     relevance = source.get("relevance_filter")
     raw = fetch(source["url"])
 
     if mode == "version":
-        return version_signals(raw, source["version_pattern"])
+        return version_signals(raw, source["version_pattern"]), []
 
     if mode == "roadmap":
         features = json.loads(raw)
@@ -540,16 +678,26 @@ def signals_for_source(source: dict) -> dict:
             "status": match.get("status"),
             "modified": match.get("modified"),
             "tags": sorted(str(t) for t in (match.get("tags") or [])),
-        }
+        }, []
 
     if mode == "markdown":
         body = strip_frontmatter(raw)
-        return extract_signals(body, markdown_sections(body), relevance)
+        sections = markdown_sections(body)
+        text = body
+    elif mode == "html":
+        sections = html_sections(raw)
+        text = strip_html(raw)
+    else:
+        raise ValueError(f"unknown mode: {mode}")
 
-    if mode == "html":
-        return extract_signals(strip_html(raw), html_sections(raw), relevance)
-
-    raise ValueError(f"unknown mode: {mode}")
+    warnings: list[str] = []
+    if relevance and title_missing(sections):
+        warnings.append(
+            "no heading at page level, so the only page-level text in scope is "
+            "whatever precedes the first heading — a page-wide release-state "
+            "banner below any other heading is not being watched"
+        )
+    return extract_signals(text, sections, relevance), warnings
 
 
 def fingerprint(signals: dict) -> str:
@@ -602,17 +750,42 @@ def describe_change(previous: dict, current: dict) -> list[str]:
     # re-reading the page, and a detector that cries wolf trains its maintainer
     # to stop looking. Naming the scope costs one word and makes the line
     # evidence rather than an alarm.
-    scope = (
-        "relevance-scoped sections"
-        if (current.get("relevance_filtered") or previous.get("relevance_filtered"))
-        else "whole page"
-    )
-    before_phrases = set(previous.get("status_phrases_present") or [])
-    after_phrases = set(current.get("status_phrases_present") or [])
-    for phrase in sorted(after_phrases - before_phrases):
-        notes.append(f"status phrase appeared in {scope}: {phrase!r}")
-    for phrase in sorted(before_phrases - after_phrases):
-        notes.append(f"status phrase disappeared from {scope}: {phrase!r}")
+    # A filtered source reports its two regions separately, because the union
+    # cannot express the event row 9 turns on: a page-wide banner already
+    # supplying a phrase masks the same phrase appearing in a watched entry. Where
+    # the split fields are present they replace the union note rather than adding
+    # to it -- they say everything it said and locate it as well.
+    regions = [
+        ("page_level_status_phrases", "page-level text"),
+        ("entry_status_phrases", "in-scope entries"),
+    ]
+    # The regions replace the union note only when *both* snapshots carry them.
+    # Then nothing is lost: no status phrase contains a newline and the regions are
+    # joined with one, so a phrase matches inside a single region and the union is
+    # exactly their union. When only one snapshot has them -- the run right after
+    # this field was added -- that identity does not hold across the pair, and
+    # reporting regions alone silently dropped a real change: the phrase
+    # `deprecated` leaving row 9's scope went unnamed, because the older snapshot
+    # had no region to lose it from.
+    split = [
+        (field, label)
+        for field, label in regions
+        if field in current and field in previous
+    ]
+    if not split:
+        scope = (
+            "relevance-scoped sections"
+            if (current.get("relevance_filtered") or previous.get("relevance_filtered"))
+            else "whole page"
+        )
+        split = [("status_phrases_present", scope)]
+    for field, label in split:
+        before_phrases = set(previous.get(field) or [])
+        after_phrases = set(current.get(field) or [])
+        for phrase in sorted(after_phrases - before_phrases):
+            notes.append(f"status phrase appeared in {label}: {phrase!r}")
+        for phrase in sorted(before_phrases - after_phrases):
+            notes.append(f"status phrase disappeared from {label}: {phrase!r}")
     return notes
 
 
@@ -772,12 +945,13 @@ def main() -> int:
     changed_ids: list[str] = []
     failed_ids: list[str] = []
     collapsed_filter_ids: list[str] = []
+    coverage_warning_ids: list[str] = []
     change_notes: dict[str, list[str]] = {}
 
     for source in registry.get("sources", []):
         source_id = source["id"]
         try:
-            signals = signals_for_source(source)
+            signals, coverage_warnings = signals_for_source(source)
         # re.error is listed explicitly: it subclasses Exception directly, not
         # ValueError, so a malformed version_pattern or relevance_filter would
         # otherwise escape failure isolation and abort the whole run — every
@@ -810,6 +984,13 @@ def main() -> int:
                 file=sys.stderr,
             )
 
+        # The other coverage condition, reported the same way and for the same
+        # reason: it costs the source part of what it claims to watch, it is not a
+        # status change, and every later run would call it "unchanged".
+        for warning in coverage_warnings:
+            coverage_warning_ids.append(source_id)
+            print(f"[warn] {source_id}: {warning}", file=sys.stderr)
+
         digest = fingerprint(signals)
         record = {
             "ok": True,
@@ -822,7 +1003,16 @@ def main() -> int:
         prior = previous_sources.get(source_id)
         if prior and prior.get("ok") and prior.get("fingerprint") and prior["fingerprint"] != digest:
             changed_ids.append(source_id)
-            change_notes[source_id] = describe_change(prior.get("signals", {}), signals)
+            # A `[changed]` line with no notes is an alarm nobody can act on, and
+            # the docs' own argument against unattributed alarms applies hardest
+            # here: the reader cannot tell an unreportable difference from a bug in
+            # the reporter. Reachable whenever the signals schema gains a field,
+            # which moves every affected fingerprint while no *reported* field
+            # differs.
+            change_notes[source_id] = describe_change(prior.get("signals", {}), signals) or [
+                "fingerprint moved but no field this report covers differs — compare the "
+                "stored `signals` objects directly; a signals-schema addition does this"
+            ]
         elif not prior:
             changed_ids.append(source_id)
             change_notes[source_id] = ["no prior baseline - first observation"]
@@ -846,6 +1036,11 @@ def main() -> int:
             # a failed source recovers by itself on the next run, a collapsed
             # filter never does.
             "collapsed_filter_sources": sorted(collapsed_filter_ids),
+            # Same class as collapsed_filter_sources -- a source watching less
+            # than its registry entry claims -- kept as its own key because the
+            # remedy differs: a collapsed filter needs a new filter, a lost
+            # page level needs a different source or a body-scoped mode.
+            "coverage_warning_sources": sorted(set(coverage_warning_ids)),
             "change_notes": change_notes,
             "sources": results,
             # Strictly what this run was able to reach, minus the watch-only
@@ -873,7 +1068,16 @@ def main() -> int:
     if args.update_baseline:
         BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
         BASELINE_FILE.write_text(
-            json.dumps({"updated_at": now, "sources": results}, indent=2, ensure_ascii=False) + "\n",
+            json.dumps(
+                {
+                    "updated_at": now,
+                    "extractor_version": EXTRACTOR_VERSION,
+                    "sources": results,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n",
             encoding="utf-8",
         )
         print(f"[baseline] wrote {BASELINE_FILE}")
@@ -883,6 +1087,7 @@ def main() -> int:
         changed_sources=",".join(sorted(changed_ids)),
         failed_sources=",".join(sorted(failed_ids)),
         collapsed_filter_sources=",".join(sorted(collapsed_filter_ids)),
+        coverage_warning_sources=",".join(sorted(set(coverage_warning_ids))),
     )
 
     # Exit 0 even when sources fail: a fetch failure is an expected, isolated
