@@ -14,6 +14,7 @@ figures had drifted, one of them by seven.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -95,6 +96,42 @@ class LiveRepositoryTests(unittest.TestCase):
         for name, pattern in validate.DOC_COUNT_CLAIMS:
             with self.subTest(claim=name):
                 self.assertTrue(pattern.search(doc), f"no '{name}' claim in the checked form")
+
+
+class DocumentedTestCommandTests(unittest.TestCase):
+    """The command `docs/agent-cadence.md` publishes must be the one CI runs.
+
+    It was not. The doc shipped `python3 -m unittest discover -s tests -t .`,
+    which fails with `ImportError: Start directory is not importable` because
+    `tests/` has no `__init__.py`, while the workflow ran the working form — so
+    CI stayed green and only the human following the documentation hit the
+    error. Same failure class as the drifted counts above: an instruction
+    nobody executes is not checked by being written down.
+    """
+
+    WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate-matrix.yml"
+    COMMAND = re.compile(r"python3? -m unittest discover[^\n#]*")
+
+    def documented_command(self) -> str:
+        found = self.COMMAND.findall(validate.CADENCE_DOC.read_text(encoding="utf-8"))
+        self.assertEqual(len(found), 1, "expected exactly one published unittest command")
+        return " ".join(found[0].split())
+
+    def workflow_command(self) -> str:
+        found = self.COMMAND.findall(self.WORKFLOW.read_text(encoding="utf-8"))
+        self.assertEqual(len(found), 1, "expected exactly one unittest command in the workflow")
+        return " ".join(found[0].split())
+
+    def test_the_documented_command_matches_the_one_ci_runs(self):
+        """Equal apart from -v, which is a CI log-verbosity choice, not a flag."""
+        self.assertEqual(
+            self.documented_command(),
+            self.workflow_command().replace(" -v", ""),
+        )
+
+    def test_the_documented_command_does_not_use_an_unimportable_top_level(self):
+        """`-t .` is the exact spelling that shipped broken. Pin it."""
+        self.assertNotIn("-t .", self.documented_command())
 
 
 if __name__ == "__main__":
