@@ -91,8 +91,12 @@ test: every primary-source URL in the matrix must appear in the evidence bundle'
 Fingerprinting a whole rendered page produces a false positive nearly every run —
 navigation, feedback widgets and per-render tokens all change independently of
 the documentation. The watcher instead extracts **status signals** and
-fingerprints those: section headings, which headings carry a `(preview)`
-qualifier, and which status-bearing phrases are present.
+fingerprints those: section headings **and the titles of collapsible reference
+entries**, because a page may list every entry it documents as a `<details>`
+disclosure and never as a heading; which of those titles carry a `(preview)`
+qualifier; and which status-bearing phrases are present — reported for the
+page's own page-level text and for its in-scope entries *separately*, since a
+page-wide release-state banner and a per-entry label are different claims.
 
 Broad release-notes pages need a further narrowing. The Defender for Cloud
 release notes carry dozens of entries for products outside this repository's
@@ -107,16 +111,50 @@ paragraph used to assert "seventy-five" for the same reason.
 distinction is the entire value of the filter. `apply_relevance_filter` narrows
 the headings; `relevance_scoped_text` narrows the text the status phrases are
 counted over, to the matching sections, everything nested under them, and the
-page-level text — what precedes the first heading, plus the H1's own section.
-All three rules are deliberate. A matching entry owns its `### Details`
+page-level text — what precedes the first heading, plus the document title's own
+section. All three rules are deliberate. A matching entry owns its `### Details`
 subsection, whose own heading mentions nothing. A page-wide release-state banner
 belongs to no entry at all, so no per-entry pattern can be expected to claim it,
 and dropping it would lose real signal: the notice that all Sentinel data
 connectors "are currently in Preview" is one half of matrix row 9's documented
 conflict. And page-level text is kept **without conferring scope on what nests
-under it** — treating the H1 as an in-scope *ancestor* would make every section
-on the page inherit it and restore precisely the unfiltered behaviour being
-removed.
+under it** — treating the title as an in-scope *ancestor* would make every
+section on the page inherit it and restore precisely the unfiltered behaviour
+being removed.
+
+**That banner justification did not hold when it was written, and issue #31 is
+the record.** The rule was sound and reached nothing. The notice it cites stands
+above the first *authored* heading but below Learn's navigation heading, and
+section extraction used to split on headings before removing chrome — so an
+`<h2>In this article</h2>` sitting inside a `<nav>` owned the article's lead-in on
+every one of this repository's html sources, and what the rule actually kept was
+the breadcrumbs. The ordering is fixed and the rule now reaches the thing it was
+always justified by. A stated rationale the code cannot exhibit is worse than no
+rationale, which is the defect that issue filed.
+
+**Page-level is positional, not a heading level.** Only the first heading is the
+title. Read as "any heading at level 1", the rule handed page-level standing to a
+mis-authored `<h1>NOTE - UPDATE:</h1>` buried inside one Sentinel connector
+entry, which held 31% of that 1.7 MB page permanently in scope — on the single
+source whose whole reason for declaring a filter is that an unfiltered
+fingerprint of it would move on nearly every run. A stray heading deep in a
+document belongs to whatever entry contains it, whatever level it is marked up
+at.
+
+**And not every entry title is a heading.** The Sentinel connectors reference
+lists each of its ~430 connectors as a `<details>`/`<summary>` disclosure, so a
+heading filter had nothing there to match — 0 of 47 headings — while the page
+plainly carried both the entry row 9 tracks and the per-entry "(Preview)" suffix
+the matrix quotes as evidence for that row. A collapsible entry is now a section
+in its own right, below `<h4>` so that it always nests under the heading above it
+and can never be mistaken for the document title. Learn's own furniture is built
+from `<details class="popover">` — breadcrumb overflow, page actions, the "Was
+this page helpful?" widget — and is excluded by that class. The direction of
+failure decided the shape of that exclusion: if Learn renames the class, a shell
+label turns up in a heading list, which is visible noise that re-baselines once,
+whereas an allow-list that stopped matching would drop real entries silently —
+and a watched signal that goes quiet is indistinguishable from "nothing changed"
+for as long as nobody re-derives it.
 
 Before that second function existed, three of the four signal fields were scoped
 and `status_phrases_present` was computed over the **whole page**. The result was
@@ -130,12 +168,17 @@ and that escalation would have had no visible cause on the page at all.
 
 Two consequences to know before reading a `[changed]` line:
 
-- **The change note states its scope.** `status phrase appeared in
-  relevance-scoped sections: 'retired'`, versus `... in whole page: ...`. A line
+- **The change note states its scope**, in one of three forms: `status phrase
+  appeared in page-level text: 'retired'` and `... in in-scope entries: ...` for
+  a filtered source, and `... in whole page: ...` for an unfiltered one. A line
   that cannot be attributed to a scope cannot be interpreted without re-fetching
   and re-reading the page, and a detector whose alarms cannot be interpreted
   trains its maintainer to stop reading them. That is the cost that mattered
-  here, more than the wasted runs.
+  here, more than the wasted runs. For the same reason a `[changed]` line is
+  never left without a note: where no reported field differs — which a signals
+  *schema* addition does, since it moves every affected fingerprint while no
+  measured value changed — the run says exactly that instead of printing a bare
+  source id.
 - **Scoping moved the fingerprint of the filtered sources only.** An unfiltered
   source's phrase set is still taken over its whole page text verbatim, so its
   stored fingerprint is untouched. Measured against the live sources on
@@ -153,14 +196,52 @@ Two consequences to know before reading a `[changed]` line:
 ### When a filter matches nothing
 
 Scoping the text correctly exposed a source that was watching almost nothing.
-`sentinel-data-connectors-reference` declares
-`["Copilot", "data connectors are currently in Preview"]` and matches **0 of the
+`sentinel-data-connectors-reference` declared
+`["Copilot", "data connectors are currently in Preview"]` and matched **0 of the
 page's 47 headings** — the connector entries on that page are not headings, so a
-heading filter cannot reach them. The source had *appeared* to be watching
+heading filter could not reach them, and the second pattern names body text that
+a heading filter can never match at all. The source had *appeared* to be watching
 something only because the phrase signal was taken over the whole page; correct
 the scope and the coverage that was never really there becomes visible.
 
-The watcher now says so. `filter_collapsed` flags any source whose declared
+**That warning is what surfaced issue #31, and the source it flagged is now
+watched.** Collapsible entries are sections, so the filter reaches the two entry
+titles row 9's published evidence rests on — **2 of that page's 437 titles**, as
+measured on **2026-09-10**; the page-level notice is covered by the page-level
+rule rather than by a pattern; and the filter no longer declares a pattern the
+code could not match. As of that date **no source's filter collapses**, so this
+warning fires on nothing — which is worth stating, because a section describing a
+warning nobody has seen fire is otherwise indistinguishable from a warning that
+is broken. The mechanism is left exactly as it was: it did what it was built to
+do, and it is the only reason anyone looked at this source at all.
+
+### The decision this took, and the two options that were not taken
+
+Issue #31 escalated row 9's watch to a human as a design decision and named two
+remedies. **(a) Add a body-scoped relevance mode**, so a filter could select
+sections by content rather than by heading — the general fix, and the one that
+would have made the registry's claim about the page-level notice true. **(b)
+Accept that the page cannot usefully be watched**, move it to
+`human_only_sources`, and stop implying row 9 has automated coverage — cheaper,
+and honest.
+
+Neither was taken, and the reason is that re-deriving the page refuted the
+premise both rested on. The page *can* be watched. Three separable defects in
+section extraction were preventing it: chrome headings owning the article
+lead-in, page-level being read as a heading *level* rather than a position, and
+collapsible entries not being sections at all. Fixing those three needs no new
+registry key, no new mode, and no schema change, and it left the declared filter
+matching exactly the two entry titles row 9's own quotes cite.
+
+So (a) was declined as unnecessary — a body-scoped mode would have worked around
+a heading extractor that was simply wrong about what a heading is on this page —
+and (b) was declined because it would have been an honest answer to a false
+premise: conceding a page is unwatchable is only honest once you have established
+that it is. Recording this here rather than leaving it implied, because a design
+decision that shows up only as an absence is the failure mode this document
+argues against elsewhere; the issue itself carries the measurements.
+
+The watcher says so. `filter_collapsed` flags any source whose declared
 filter matches no heading, the run prints a `[warn]`, and the evidence bundle
 carries `collapsed_filter_sources`. It is deliberately **not** a failure and
 **not** a change: the fetch succeeded and the fingerprint is honest about what it
