@@ -114,17 +114,74 @@ def fetch(url: str) -> str:
 # --------------------------------------------------------------------------
 # normalisation
 # --------------------------------------------------------------------------
+# Elements that carry no line break when the page is rendered. Their tags must
+# be removed *without* a separator: a reader sees `in <a>Preview</a>` as the
+# continuous phrase "in Preview", so replacing the tag with a newline splits a
+# phrase that is plainly on the page and makes it invisible to phrase matching.
+#
+# Every element NOT listed here is treated as a block boundary and still becomes
+# a newline. That asymmetry is the point, and it is why this is not fixed by
+# normalising whitespace afterwards: collapsing all whitespace would also join
+# adjacent blocks, so a paragraph ending "available in" followed by a heading
+# "Preview features" would manufacture the phrase "in preview" that no reader
+# sees. Healing inline splits can only ever recover text the page really shows;
+# dissolving block boundaries can invent text it does not.
+INLINE_TAGS = frozenset(
+    """
+    a abbr b bdi bdo cite code data dfn em i ins kbd mark q rp rt ruby s samp
+    small span strong sub sup time u var wbr del
+    """.split()
+)
+
+# Named tags only; `<!-- comments -->`, doctypes and malformed fragments fall
+# through to the catch-all below and are treated as block boundaries.
+NAMED_TAG = re.compile(r"</?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>", re.DOTALL)
+
+# Block boundaries are marked with a sentinel rather than a newline so that the
+# whitespace collapse below can tell them apart from whitespace that was already
+# in the source. A fetched page has no legitimate NUL, and any it did carry is
+# removed before the marker is introduced.
+BLOCK_MARKER = "\x00"
+
+
+def _tag_separator(match: "re.Match[str]") -> str:
+    return "" if match.group(1).lower() in INLINE_TAGS else BLOCK_MARKER
+
+
 def strip_html(document: str) -> str:
     """Reduce a rendered Learn page to its article text.
 
     Everything outside <main> is navigation/chrome that changes independently of
     the documentation, so it is discarded before any comparison.
+
+    Within a block, the text is reduced to what a reader actually sees, because
+    three different things used to split a phrase that is plainly on the page and
+    hide it from phrase matching:
+
+    * an **inline tag**, e.g. ``in <a>Preview</a>`` -- every tag became a newline;
+    * a **source line break** inside a paragraph, which renders as a space;
+    * a **non-breaking space** (``&nbsp;``), which survived unescaping as U+00A0
+      and matches no plain-space pattern.
+
+    Block boundaries are still hard. That asymmetry is the whole design -- see
+    INLINE_TAGS. Heading extraction in `html_sections` has always removed tags
+    without a separator, so headings were never affected by any of this; body
+    text was, which is why one page could publish a release-state notice that
+    the phrase signal reported as absent.
     """
     main = re.search(r"<main\b[^>]*>(.*?)</main>", document, re.DOTALL | re.IGNORECASE)
     body = main.group(1) if main else document
     body = re.sub(r"<(script|style|nav|header|footer)\b.*?</\1>", " ", body, flags=re.DOTALL | re.IGNORECASE)
-    body = re.sub(r"<[^>]+>", "\n", body)
-    return html.unescape(body)
+    body = body.replace(BLOCK_MARKER, " ")
+    body = NAMED_TAG.sub(_tag_separator, body)
+    body = re.sub(r"<[^>]+>", BLOCK_MARKER, body)
+    # Entities first: `&lt;script&gt;` must not become a tag, and `&nbsp;` must
+    # become U+00A0 before the collapse can fold it into an ordinary space.
+    body = html.unescape(body)
+    # `\s` covers U+00A0 in str mode, so this is what folds `&nbsp;` away. The
+    # block marker is not whitespace, so it survives the collapse intact.
+    body = re.sub(r"\s+", " ", body)
+    return body.replace(BLOCK_MARKER, "\n")
 
 
 # A *section* is (heading_level, heading_or_None, body_text). A section's body

@@ -268,6 +268,102 @@ class HtmlScopingTests(unittest.TestCase):
         )
 
 
+# The shape that exposed the defect, reduced from the live Sentinel data
+# connectors reference: the release-state word is wrapped in a link, so the
+# phrase a reader sees as continuous was split by a tag.
+INLINE_SPLIT_PAGE = """<html><body><main>
+<h1>Find your data connector</h1>
+<p>Note that Microsoft Sentinel data connectors are currently in
+<a href="https://example.invalid/terms">Preview</a>. Additional terms apply.</p>
+<h2>Generative AI category</h2>
+<p>This category is <strong>generally</strong> available.</p>
+</main></body></html>"""
+
+# Two separate blocks that must NOT be joined. Whitespace normalisation would
+# manufacture "in preview" here; dissolving inline tags cannot.
+BLOCK_BOUNDARY_PAGE = """<html><body><main>
+<h1>Find your data connector</h1>
+<p>This connector is not available in</p>
+<p>Preview mode is documented elsewhere.</p>
+</main></body></html>"""
+
+
+class InlineTagPhraseTests(unittest.TestCase):
+    """A status phrase interrupted by an inline tag is on the page, so it must be seen.
+
+    Regression for the defect that let `sentinel-data-connectors-reference`
+    publish "data connectors are currently in Preview" while the phrase signal
+    reported no `in preview` at all: `strip_html` replaced *every* tag with a
+    newline, including the `<a>` wrapping the word "Preview".
+    """
+
+    def test_phrase_split_by_an_inline_tag_is_detected(self):
+        signals = html_signals(INLINE_SPLIT_PAGE, None)
+        self.assertIn("in preview", signals["status_phrases_present"])
+
+    def test_phrase_split_by_an_inline_tag_is_detected_when_the_filter_collapses(self):
+        # The live case: the filter matches no heading, so only page-level text
+        # is in scope -- and the notice lives exactly there.
+        signals = html_signals(INLINE_SPLIT_PAGE, ["Copilot"])
+        self.assertEqual(signals["heading_count"], 0)
+        self.assertTrue(watch.filter_collapsed(signals))
+        self.assertIn("in preview", signals["status_phrases_present"])
+
+    def test_the_notice_reads_as_one_continuous_line(self):
+        text = watch.strip_html(INLINE_SPLIT_PAGE)
+        self.assertIn("are currently in Preview. Additional terms apply.", text)
+
+    def test_block_boundaries_are_still_newlines(self):
+        text = watch.strip_html(INLINE_SPLIT_PAGE)
+        self.assertNotIn("apply. Generative AI category", text)
+        self.assertIn("\nGenerative AI category\n", text)
+
+    def test_a_non_breaking_space_does_not_hide_a_phrase(self):
+        page = INLINE_SPLIT_PAGE.replace("currently in\n", "currently&nbsp;in&nbsp;")
+        signals = html_signals(page, None)
+        self.assertIn("in preview", signals["status_phrases_present"])
+
+    def test_a_source_line_break_does_not_hide_a_phrase(self):
+        # The fixture already wraps the source line between "in" and the link,
+        # which renders as a space; pin it explicitly so the reason is legible.
+        self.assertIn("currently in\n<a", INLINE_SPLIT_PAGE)
+        signals = html_signals(INLINE_SPLIT_PAGE, None)
+        self.assertIn("in preview", signals["status_phrases_present"])
+
+    def test_a_phrase_inside_an_inline_tag_is_still_detected(self):
+        # "generally available" straddles </strong>, so the closing tag must not
+        # split it either.
+        signals = html_signals(INLINE_SPLIT_PAGE, None)
+        self.assertIn("generally available", signals["status_phrases_present"])
+
+    def test_a_block_boundary_does_not_manufacture_a_phrase(self):
+        # The false-positive guard. This is what separates dissolving inline
+        # tags from normalising whitespace: the words are adjacent in the source
+        # but a reader never sees the phrase, so it must not be reported.
+        signals = html_signals(BLOCK_BOUNDARY_PAGE, None)
+        self.assertNotIn("in preview", signals["status_phrases_present"])
+
+    def test_headings_were_never_affected(self):
+        # `html_sections` has always stripped heading tags without a separator,
+        # so heading-derived signals need no change. Pin that, because the fix
+        # would otherwise look like it should have touched them too.
+        page = INLINE_SPLIT_PAGE.replace(
+            "<h2>Generative AI category</h2>",
+            '<h2>Generative <em>AI</em> category</h2>',
+        )
+        headings = watch.section_headings(watch.html_sections(page))
+        self.assertIn("Generative AI category", headings)
+
+    def test_the_existing_unaffected_page_is_unchanged(self):
+        # Sources with no inline markup inside a tracked phrase must keep the
+        # signals they had, or the re-baseline would be wider than its cause.
+        signals = html_signals(HTML_PAGE)
+        self.assertEqual(signals["headings"], ["Generative AI category"])
+        self.assertEqual(
+            signals["status_phrases_present"], ["generally available", "in development"]
+        )
+
+
 class RegistryValidationTests(unittest.TestCase):
     """`registry_problems` now covers human_only_sources as well as sources."""
 
