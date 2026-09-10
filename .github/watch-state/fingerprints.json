@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-09T17:04:36Z",
+  "updated_at": "2026-09-10T00:29:02Z",
   "sources": {
     "purview-dlp-copilot": {
       "ok": true,
@@ -37,7 +37,7 @@
         "heading_count": 20,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
       "matrix_rows": [
         1,
@@ -64,7 +64,7 @@
         "heading_count": 4,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
       "matrix_rows": [
         4
@@ -72,7 +72,7 @@
     },
     "defender-release-notes": {
       "ok": true,
-      "fingerprint": "5a168535947fc48ee95e422036152419ad8a8fed537d0111b848c7e39c22cdbb",
+      "fingerprint": "f46d2822be8294c12f4143dedcc39abe469ca2106db3564477a93985242a285e",
       "signals": {
         "headings": [
           "AI model security for Azure Machine Learning (Preview)",
@@ -84,16 +84,12 @@
         ],
         "status_phrases_present": [
           "deprecated",
-          "generally available",
-          "in preview",
-          "public preview",
-          "retired",
-          "rolling out"
+          "in preview"
         ],
         "heading_count": 2,
         "relevance_filtered": true
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
       "matrix_rows": [
         4
@@ -101,7 +97,7 @@
     },
     "defender-release-notes-archive": {
       "ok": true,
-      "fingerprint": "9b321d5ef268b2a6f166ea228033313b6e3e139f93dab7034e216868aacc7aca",
+      "fingerprint": "dbd1671658c226eb25e297e980f9e7dca2712d6ba6422c42d9822a09baeac562",
       "signals": {
         "headings": [
           "Discover Azure AI Foundry agents in your environment (Preview)",
@@ -121,18 +117,13 @@
           "Discover Azure AI Foundry agents in your environment (Preview)"
         ],
         "status_phrases_present": [
-          "deprecated",
           "generally available",
-          "in preview",
-          "launched",
-          "public preview",
-          "retired",
-          "rolling out"
+          "in preview"
         ],
         "heading_count": 10,
         "relevance_filtered": true
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
       "matrix_rows": [
         4
@@ -154,7 +145,7 @@
           "{'tagName': 'Worldwide (Standard Multi-Tenant)'}"
         ]
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
       "matrix_rows": [
         2
@@ -183,7 +174,7 @@
         "heading_count": 10,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
       "matrix_rows": [
         6,
@@ -203,7 +194,7 @@
         "heading_count": 2,
         "relevance_filtered": true
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
       "matrix_rows": [
         6
@@ -228,7 +219,7 @@
         "heading_count": 6,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
       "matrix_rows": [
         7
@@ -258,7 +249,7 @@
         "heading_count": 11,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
       "matrix_rows": [
         7
@@ -293,7 +284,7 @@
         "heading_count": 18,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
       "matrix_rows": [
         7
@@ -323,7 +314,7 @@
         "heading_count": 13,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
       "matrix_rows": [
         8
@@ -355,7 +346,7 @@
         "heading_count": 13,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
       "matrix_rows": [
         8
@@ -363,18 +354,17 @@
     },
     "sentinel-data-connectors-reference": {
       "ok": true,
-      "fingerprint": "34befb5c22083edcc133cfc25ce57e769e9211c380585f52b3b0afbf38e3e5e4",
+      "fingerprint": "9f8ed72dabf4e4635cf8e80570985ff854f7f5f19da7c132b9a8a98b6b6d26fa",
       "signals": {
         "headings": [],
         "preview_qualified_headings": [],
         "status_phrases_present": [
-          "deprecated",
-          "in preview"
+          "deprecated"
         ],
         "heading_count": 0,
         "relevance_filtered": true
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
       "matrix_rows": [
         9
@@ -404,7 +394,7 @@
         "heading_count": 13,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-office-365/step-by-step-guides/prompt-injection-protection-defender-for-office-365",
       "matrix_rows": [
         10
@@ -436,7 +426,7 @@
         "heading_count": 11,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/security-for-ai/ai-agent-detection-protection",
       "matrix_rows": [
         10
@@ -460,7 +450,7 @@
         "heading_count": 7,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table",
       "matrix_rows": [
         10
@@ -492,7 +482,7 @@
         "heading_count": 15,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/workload-identity",
       "matrix_rows": [
         11
@@ -525,7 +515,7 @@
         "heading_count": 12,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-users-groups",
       "matrix_rows": [
         11
@@ -558,7 +548,7 @@
         "heading_count": 16,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/agent-id",
       "matrix_rows": [
         11
@@ -597,7 +587,7 @@
         "heading_count": 20,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
       "matrix_rows": [
         11
@@ -613,7 +603,7 @@
         "version_count": 1,
         "rejected_token_count": 0
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://atlas.mitre.org/",
       "matrix_rows": []
     },
@@ -636,7 +626,7 @@
         "version_count": 10,
         "rejected_token_count": 0
       },
-      "checked_at": "2026-09-09T17:04:36Z",
+      "checked_at": "2026-09-10T00:29:02Z",
       "cite_url": "https://genai.owasp.org/llm-top-10/",
       "matrix_rows": []
     }
