@@ -242,8 +242,12 @@ decision that shows up only as an absence is the failure mode this document
 argues against elsewhere; the issue itself carries the measurements.
 
 The watcher says so. `filter_collapsed` flags any source whose declared
-filter matches no heading, the run prints a `[warn]`, and the evidence bundle
-carries `collapsed_filter_sources`. It is deliberately **not** a failure and
+filter matches no heading, the run prints a `[warn]`, the evidence bundle
+carries `collapsed_filter_sources`, and both the source watch and the monthly
+refresh turn that list — with the narrower `coverage_warning_sources` beside
+it, raised when a filtered source's page has no heading at page level — into a
+`::warning::` annotation and a run-summary entry. The condition is deliberately
+**not** a failure and
 **not** a change: the fetch succeeded and the fingerprint is honest about what it
 saw. What has gone is coverage — and a source watching only its preamble reports
 "unchanged" forever, which is indistinguishable from a healthy one. That
@@ -251,6 +255,18 @@ indistinguishability is how the OWASP edition gap survived, so it is announced
 rather than inferred. `collapsed_filter_sources` is kept separate from
 `failed_sources` because the two need opposite responses: a failed fetch
 recovers by itself on the next run, a collapsed filter never does.
+
+Two limits on that announcement, stated because the difference decides who has
+to act. Both channels are visible to whoever opens the run and neither notifies
+anyone, so a collapsed filter is still found by somebody looking rather than by
+being told. And the stale guard is not an automatic second net for it: because
+the fetch succeeded, a refresh that advances the row's last-verified date keeps
+that row out of the staleness window altogether, so withholding the advance is a
+judgement someone has to make. What *is* mechanical is the committed baseline —
+`CommittedBaselineInvariantTests` in `tests/test_watch_sources.py` fails the
+build if a stored fingerprint shows a filtered source with no headings, so a
+collapse cannot be quietly re-baselined into the new normal even though it can
+be quietly present in a single day's run.
 
 ## What the cadence cannot find at all
 

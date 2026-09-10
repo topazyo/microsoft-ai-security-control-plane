@@ -34,12 +34,22 @@ jobs:
         with:
           python-version: '3.12'
 
+      # `shell: bash` is load-bearing, not decoration. Without it a `run:` block
+      # is executed as `bash -e {0}` with NO pipefail, so this pipeline reported
+      # `tee`'s status -- always 0. A crash in stale_guard.py therefore produced
+      # a green weekly run, an absent `stale` output, an empty staleness.txt and
+      # a skipped issue step: every visible signal said "nothing is stale".
+      # Naming the shell explicitly selects `bash --noprofile --norc -eo
+      # pipefail`, so the script's own failure fails the step.
       - name: Evaluate staleness
         id: stale
+        shell: bash
         run: python3 scripts/stale_guard.py | tee staleness.txt
 
+      # Fail closed on the output too. `== 'true'` treated an ABSENT output as
+      # "not stale", which is the one value it must never be read as.
       - name: Open or update the staleness issue
-        if: steps.stale.outputs.stale == 'true'
+        if: steps.stale.outputs.stale != 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TITLE: 'Stale rows: last-verified dates exceed the monthly window'
@@ -51,8 +61,10 @@ jobs:
             cat staleness.txt
             echo
             echo "Re-verification is a human step for any row whose status is"
-            echo "**Requires further validation**, and for the Message Center and"
-            echo "CSA AICM sources, which are not machine-fetchable. See"
+            echo "**Requires further validation**, and for the Message Center,"
+            echo "CSA AICM, NIST AI 600-1 and GitHub Docs sources, which no"
+            echo "fingerprint can re-verify. Their staleness means a human is"
+            echo "overdue, not that the automation is failing. See"
             echo "checklists/capability-status-verification.md, Group 9."
             echo
             echo "_Raised automatically by the stale guard; this issue is reused, not duplicated._"

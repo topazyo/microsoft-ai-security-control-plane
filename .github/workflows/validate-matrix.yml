@@ -16,6 +16,15 @@ name: Validate matrix
 # scaffolding- or README-only pull request that did not trigger this workflow
 # received no confidentiality scan at all - the check was absent rather than
 # green, which is the more dangerous of the two.
+#
+# The two lists must stay identical. They were not: `.github/watch-state/**` was
+# in the pull_request list and missing from the push list, so a baseline- or
+# registry-only push to main ran no validation and fingerprints.json - which
+# carries verbatim upstream text and is a changed .json - reached main with no
+# confidentiality scan. `.claude/**` was in neither, so a change to the tracked
+# adjudicator specification, the rules the workflows read, the hooks, or
+# settings.json was ungated entirely; those are executable influence surfaces,
+# which is exactly why .gitignore keeps them tracked.
 on:
   pull_request:
     paths:
@@ -29,6 +38,7 @@ on:
       - 'CONTRIBUTING.md'
       - 'SECURITY.md'
       - 'LICENSE*'
+      - '.claude/**'
       - '.github/watch-state/**'
       - '.github/workflows/**'
       - '.github/ISSUE_TEMPLATE/**'
@@ -48,6 +58,8 @@ on:
       - 'CONTRIBUTING.md'
       - 'SECURITY.md'
       - 'LICENSE*'
+      - '.claude/**'
+      - '.github/watch-state/**'
       - '.github/workflows/**'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/pull_request_template.md'

@@ -67,6 +67,39 @@ jobs:
           echo "::warning::Unreachable this run: ${{ steps.watch.outputs.failed_sources }}."
           echo "Rows depending on these sources must NOT have their last-verified date advanced."
 
+      # Matters more here than in the daily watch, because this job runs with
+      # --update-baseline: a collapsed filter that is not adjudicated first gets
+      # stored as the new normal, and the affected rows still get their dates
+      # advanced because their fetch succeeded. See source-watch.yml for the
+      # full reasoning.
+      - name: Flag coverage loss in the watched signal
+        if: steps.watch.outputs.collapsed_filter_sources != '' || steps.watch.outputs.coverage_warning_sources != ''
+        env:
+          COLLAPSED_SOURCES: ${{ steps.watch.outputs.collapsed_filter_sources }}
+          COVERAGE_WARNING_SOURCES: ${{ steps.watch.outputs.coverage_warning_sources }}
+        run: |
+          echo "::warning::Coverage loss this run. Collapsed relevance filter: ${COLLAPSED_SOURCES:-none}. Narrowed page-level coverage: ${COVERAGE_WARNING_SOURCES:-none}. These sources fetched cleanly while watching less than the registry claims."
+          {
+            printf '## Coverage loss in the watched signal\n\n'
+            printf 'Collapsed relevance filter: %s\n\n' "${COLLAPSED_SOURCES:-none}"
+            printf 'Narrowed page-level coverage: %s\n\n' "${COVERAGE_WARNING_SOURCES:-none}"
+            cat <<'SUMMARY'
+          This run wrote a new baseline. A source listed above fetched successfully while
+          watching less than its registry entry claims, so two things follow that the
+          unreachable-source case does not have:
+
+          - the degraded signal has just been stored as the new normal, and
+          - its rows still satisfy "advance only where the source was fetched
+            successfully", so their last-verified dates advance and the stale guard
+            never raises them.
+
+          **Do not advance the last-verified date of any row backed by a source listed
+          above**, and record the collapse in this refresh's CHANGELOG entry rather than
+          letting the new baseline absorb it silently. The per-source `[warn]` lines are
+          in the `Re-fetch every pinned source` step log.
+          SUMMARY
+          } >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Consolidate, update stamps and write the CHANGELOG entry
         if: steps.creds.outputs.present == 'true'
         # Pinned to a commit SHA, not a mutable tag: a tag can be repointed at
@@ -132,12 +165,24 @@ jobs:
           SUMMARY
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Escalate rows needing in-tenant confirmation
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Renamed to what it does. It was called "Escalate rows needing in-tenant
+      # confirmation" and held a GH_TOKEN, but never invoked `gh` at all -- the
+      # token and the job's `issues: write` were dead weight for this step, and
+      # nothing was escalated anywhere. Filing and updating the staleness issue
+      # belongs to the weekly stale-guard workflow, which does exactly that; a
+      # second issue-filer here would duplicate it. So this step reports, and
+      # says so in its name.
+      #
+      # `|| true` is gone, and the gate reads the script's own output instead of
+      # grepping its prose: `|| true` turned a crash into "no staleness", and a
+      # `grep -q "exceed the"` would have missed any rewording of that sentence.
+      - name: Report residual staleness after the refresh
+        id: stale
+        shell: bash
+        run: python3 scripts/stale_guard.py | tee staleness.txt
+
+      - name: Record residual staleness in the run summary
+        if: steps.stale.outputs.stale != 'false'
         run: |
-          python3 scripts/stale_guard.py > staleness.txt || true
-          if grep -q "exceed the" staleness.txt; then
-            echo "::warning::Staleness remains after the monthly refresh; see the run summary."
-            cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"
-          fi
+          echo "::warning::Staleness remains after the monthly refresh; see the run summary."
+          cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"

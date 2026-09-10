@@ -958,6 +958,68 @@ class CommittedRegistryWatchTests(unittest.TestCase):
         self.assertIn(9, self.entry["matrix_rows"])
 
 
+class CoverageSignalWiringTests(unittest.TestCase):
+    """Every coverage-loss key the watcher emits must reach a reader.
+
+    `collapsed_filter_sources` and `coverage_warning_sources` were written to
+    GITHUB_OUTPUT and into the evidence bundle and consumed by nothing: a grep
+    for either name across `.github/` returned no match. A step output nothing
+    reads is not a surfacing, which is the same defect class as the OWASP
+    edition gap these signals exist to prevent -- recreated inside the fix for
+    it.
+
+    Asserted as text over the workflow files, following the precedent in
+    tests/test_validate_bot_pr.py, because there is no way to run a GitHub
+    Actions expression offline. This pins the wiring, not its wording.
+    """
+
+    WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+    EMITTED = ("collapsed_filter_sources", "coverage_warning_sources")
+
+    def emitted_keys(self) -> set[str]:
+        """The keys watch_sources.py actually hands to GITHUB_OUTPUT.
+
+        `rindex`, not `index`: the first match is the `def emit_github_output(`
+        line, whose `(**values)` yields no keywords at all -- which would make
+        this whole class pass vacuously over an empty set.
+        """
+        source = (REPO_ROOT / "scripts" / "watch_sources.py").read_text(encoding="utf-8")
+        start = source.rindex("    emit_github_output(")
+        end = source.index("\n    )", start)
+        keys = {
+            line.split("=")[0].strip()
+            for line in source[start:end].splitlines()[1:]
+            if "=" in line and not line.strip().startswith("#")
+        }
+        self.assertTrue(keys, "could not parse the emit_github_output call")
+        return keys
+
+    def test_the_emitted_key_names_are_still_the_ones_pinned_here(self):
+        """Renaming a key in the script must not silently unwire the workflows."""
+        self.assertLessEqual(set(self.EMITTED), self.emitted_keys())
+
+    def test_both_coverage_keys_are_consumed_by_the_source_watch(self):
+        text = (self.WORKFLOWS / "source-watch.yml").read_text(encoding="utf-8")
+        for key in self.EMITTED:
+            with self.subTest(key=key):
+                self.assertIn(key, text)
+
+    def test_both_coverage_keys_are_consumed_by_the_monthly_refresh(self):
+        """It matters most here: this job runs --update-baseline."""
+        text = (self.WORKFLOWS / "monthly-refresh.yml").read_text(encoding="utf-8")
+        for key in self.EMITTED:
+            with self.subTest(key=key):
+                self.assertIn(key, text)
+
+    def test_every_emitted_key_is_consumed_somewhere(self):
+        """The general rule, so a future key cannot be added and left unread."""
+        consumed = "".join(
+            path.read_text(encoding="utf-8") for path in sorted(self.WORKFLOWS.glob("*.yml"))
+        )
+        unread = sorted(key for key in self.emitted_keys() if key not in consumed)
+        self.assertEqual(unread, [])
+
+
 class CommittedBaselineInvariantTests(unittest.TestCase):
     """Network-free assertions over the committed baseline itself.
 
