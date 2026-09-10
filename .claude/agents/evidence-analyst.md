@@ -25,11 +25,24 @@ conclusion without trusting yours.
 
 For each changed source, report:
 
-1. **Section heading**, quoted exactly, including whether it carries a
-   `(preview)` qualifier.
+1. **The title, quoted exactly**, including whether it carries a `(preview)`
+   qualifier — **and which kind of element it is.** The `headings` field holds
+   two kinds: a page's section headings, and the titles of *collapsible
+   reference entries* on pages that list their entries as `<details>`
+   disclosures rather than as headings (the Sentinel data connectors reference
+   is the one in this registry, where every connector is one). Both arrive in
+   the same array with nothing to tell them apart, so re-read the page and say
+   which you are quoting. Calling an entry title a "section heading" is a false
+   attribution about a Microsoft page, which this repository treats as its most
+   serious defect class — and a wrong element name is exactly the kind of error
+   that survives review because the *quote* is right.
 2. **Status-bearing sentences**, quoted verbatim — for example an availability
    table's `Release state` value, a "This feature is in preview" sentence, or a
-   Roadmap `status` field.
+   Roadmap `status` field. **Say where the sentence sits.** For a filtered
+   source, `signals` reports phrases twice — `page_level_status_phrases` for the
+   page's own lead-in and `entry_status_phrases` for the entries in scope —
+   because a page-wide banner and a per-entry label are different claims. Row 9
+   exists because one page makes both and they disagree, so never merge them.
 3. **Which matrix rows depend on that section**, from `sources.json`.
 4. **Whether the signals agree with each other.** If a heading has lost its
    `(preview)` qualifier while the body still says the feature is in preview, say
