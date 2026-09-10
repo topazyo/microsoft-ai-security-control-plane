@@ -914,7 +914,26 @@ def emit_github_output(**values) -> None:
             handle.write(f"{key}={value}\n")
 
 
+def use_utf8_streams() -> None:
+    """Print fetched page text without depending on the console's code page.
+
+    This one matters most of the four scripts: the `[changed]` notes and the
+    `[warn]` lines echo headings and phrases taken verbatim from live Microsoft
+    Learn pages, and a heading as ordinary as "Settings -> Privacy" contains
+    U+2192, which a cp1252 console cannot encode. The run would die with
+    UnicodeEncodeError *after* fetching, mid-report. CI runs UTF-8 so it never
+    sees this, and tiers D2 and D3 are currently operated locally, so the local
+    path is the one that actually runs. See scripts/changelog_entry.py, where a
+    published command was found crashing for exactly this reason.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Deterministic source watcher (tier D1).")
     parser.add_argument(
         "--update-baseline",

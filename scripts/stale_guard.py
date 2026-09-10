@@ -109,7 +109,23 @@ def emit_github_output(**values) -> None:
                 handle.write(f"{key}={value}\n")
 
 
+def use_utf8_streams() -> None:
+    """Print repository text without depending on the console's code page.
+
+    A Windows console defaults to a legacy code page, and the identifiers this
+    guard echoes come verbatim from tracked files. An em dash survives cp1252;
+    an arrow (U+2192) does not. CI runs UTF-8, so this failure mode is invisible
+    there and hits only the local runs -- which is where tiers D2 and D3 are
+    currently operated. See scripts/changelog_entry.py, where it was found.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Staleness guard (tier D4).")
     parser.add_argument("--today", default=None, help="Override today's date (YYYY-MM-DD), for testing.")
     parser.add_argument("--window-days", type=int, default=None, help="Override the staleness window.")

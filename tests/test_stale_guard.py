@@ -667,6 +667,40 @@ class LiveTrackedFileTests(GuardRunner):
         self.assertEqual(read, validate.matrix_row_ids(text))
         self.assertGreaterEqual(len(read), 13)
 
+    def test_every_framework_row_carries_a_date_the_guard_can_read(self):
+        """The same silent-denominator gap, in the cross-walk.
+
+        `test_every_target_yields_at_least_one_dated_item` only proves the
+        cross-walk parses at all, so a framework row whose date cell went blank
+        would drop out of the guard while every other signal stayed green -- the
+        report would simply count one fewer item and say nothing about it.
+
+        Both sides are derived, so this cannot rot on a re-verification: the
+        guard's identifiers come from `parse_table_dates`, and the authoritative
+        set of framework rows comes from `validate.crosswalk_row_names`, which
+        reads the first column of the same table. If either parser stops seeing
+        a row the other still sees, this fails.
+        """
+        target = self.target_for("crosswalk/")
+        text = (REPO_ROOT / target["path"]).read_text(encoding="utf-8")
+        dated = {
+            identifier + validate.CROSSWALK_ROW_SUFFIX
+            for identifier, _ in guard.parse_table_dates(text, target["column"])
+        }
+        self.assertEqual(dated, validate.crosswalk_row_names(text))
+
+    def test_the_footer_stamp_is_a_single_dated_item(self):
+        """One stamp, and it must be found: the footer branch has no fallback.
+
+        `parse_footer_date` returns [] on a miss, which `main()` reports as an
+        unreadable target -- but only because nothing else in that file matches
+        the pattern. Pinning the count keeps a second stamp from quietly
+        doubling the denominator.
+        """
+        target = self.target_for("checklists/")
+        text = (REPO_ROOT / target["path"]).read_text(encoding="utf-8")
+        self.assertEqual(len(guard.parse_footer_date(text, target["pattern"])), 1)
+
     def test_the_reported_window_is_the_one_the_registry_declares(self):
         registry = json.loads(guard.SOURCES_FILE.read_text(encoding="utf-8"))
         window = registry.get("staleness_window_days")

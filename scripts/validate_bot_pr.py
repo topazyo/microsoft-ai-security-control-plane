@@ -811,7 +811,23 @@ def check_escalation_direction(base_ref: str | None, findings: Findings, bot: bo
         findings.note("escalation direction: no row moved out of 'Requires further validation'")
 
 
+def use_utf8_streams() -> None:
+    """Print repository text without depending on the console's code page.
+
+    Findings quote cell text and URLs straight out of the tracked files, and
+    the report itself uses an em dash. cp1252 happens to carry the em dash but
+    not an arrow (U+2192), so this failed only for some content -- which is
+    worse than failing always. CI runs UTF-8 and never saw it. See
+    scripts/changelog_entry.py, where a published command was found crashing.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Deterministic validators for automated matrix changes.")
     parser.add_argument("--base-ref", default=None, help="Base git ref to diff against (e.g. origin/main).")
     parser.add_argument("--evidence", type=Path, default=None, help="Path to the watcher's evidence bundle.")

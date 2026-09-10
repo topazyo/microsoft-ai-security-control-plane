@@ -361,6 +361,15 @@ the signal under "checked, nothing changed" entries. D1 and D4 never write to
 `CHANGELOG.md` at all; D2 appends a bullet under the current month's heading, and
 D3 creates that heading. `scripts/changelog_entry.py` enforces this.
 
+**One heading per calendar month, except across a release.** `find_month_heading`
+matches a month's heading only if it carries the word *refresh*, which every
+heading the script creates does and a released heading — `## [0.1.3] — …` — does
+not. So automation can never append a bullet into a section that has already been
+tagged and published: a post-tag bullet for the same month opens a fresh
+`## [Unreleased] — <date> refresh` heading above the release instead. That is why
+two headings for one calendar month legitimately coexist, and why the `refresh`
+token must be kept out of a released heading.
+
 D3 writes an entry even when nothing changed. That matches the existing
 2026-07-14 entry, which records that every status held — and it guarantees
 monthly repository activity, which matters because GitHub disables scheduled
