@@ -98,16 +98,36 @@ request with a commit per row is also fine.
 
 ```
 python -m compileall -q scripts
+python -m unittest discover -s tests
 python scripts/validate_bot_pr.py --base-ref origin/main
 python scripts/stale_guard.py
 ```
 
-All three must pass before you mark a pull request ready. **`stale_guard.py` is
-expected to report zero stale items.** Any stale item is a finding to act on,
-not a known exception to scroll past. This instruction previously told you to
-expect exactly one — the CSA AICM framework row — which stopped being true on
-2026-08-10 when that row was re-verified against the workbook. A checklist that
-teaches you to normalise one stale item teaches you to miss the second.
+These are the four commands the `Validate matrix` workflow runs, in its own
+order. The test suite was missing from this block for two releases while CI ran
+it, so a contributor following these instructions could not reproduce the gate
+that would fail their pull request.
+
+**The first three must pass. `stale_guard.py` is different, and reading it as a
+pass/fail gate is a mistake:** it exits 0 whether or not anything is stale
+(non-zero requires `--fail-on-stale`), and CI pipes it into the run summary, so
+no check anywhere enforces its output. Paste the output into your pull request
+rather than inferring it from a green run.
+
+**What to expect from it: the documented human-only residue, and nothing more.**
+This instruction used to say "expect zero stale items", which was false whenever
+the recurring human step was merely *due* rather than skipped — and telling you
+to expect an impossible state teaches you to scroll past the real ones. It is
+not a licence to normalise staleness either. The items that may legitimately
+appear are named in `checklists/capability-status-verification.md` (Group 9,
+which lists the dated items no agent run can advance) and, for the OWASP
+cross-walk row, in `crosswalk/framework-crosswalk.md`, which records why its date
+deliberately does not advance while the watched page still presents the previous
+edition. **Anything outside those named items is a finding to act on**, and so is
+any of them that has been overdue long enough to stop being "due" — an earlier
+version of this file told you to expect exactly one stale item, the CSA AICM row,
+which stopped being true the day that row was re-verified. Name what you see and
+why it is expected; do not silence it by advancing a date you did not re-read.
 
 Note that the guard's own output is **not** enforced by any CI check: the
 `Validate matrix` workflow pipes it into the run summary with `|| true`, so it

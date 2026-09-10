@@ -270,12 +270,18 @@ be quietly present in a single day's run.
 
 ## What the cadence cannot find at all
 
-Every watched source but one is a per-capability page, and a per-capability page
-can only ever report drift on a row that **already exists**. The registry holds
-exactly one release-notes source — Defender for Cloud, plus its archive — and no
-Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel "what's new"
-equivalent. **The automated cadence is therefore structurally incapable of
-finding a capability that should become a new row.**
+No watched source is a discovery surface, and that is the whole of the argument —
+not a count of how many are per-capability pages. Most of the registry is
+per-capability pages, which can only ever report drift on a row that **already
+exists**. The rest are not discovery surfaces either: the two Defender for Cloud
+release-notes pages are the registry's only "what's new" style sources, with no
+Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel equivalent; the
+aggregate reference pages carry a `relevance_filter` scoped to the entries
+existing rows already cite, so a genuinely new capability appearing on one of
+them is filtered *out* by construction; and the two framework sources watch an
+edition token, not Microsoft's product surface at all. **The automated cadence is
+therefore structurally incapable of finding a capability that should become a new
+row.**
 
 That gap is stated rather than closed, and the README and the matrix now say the
 same thing rather than promising more: the automated half of the monthly refresh
@@ -312,7 +318,21 @@ only when primary sources converge **and** the behaviour is confirmed in a real
 tenant. Automation cannot confirm anything in a tenant, so it can never satisfy
 the exit condition. It raises
 `.github/ISSUE_TEMPLATE/tenant-verification.md` instead, and
-`scripts/validate_bot_pr.py` fails any pull request that attempts the transition.
+`scripts/validate_bot_pr.py --bot` fails any **automated** change that attempts
+the transition.
+
+**Read that scoping precisely, because it is easy to overstate.** Two checks —
+the path allowlist and the escalation direction — are hard failures only under
+`--bot`, which the two automation workflows pass and the `Validate matrix`
+pull-request gate does not. That asymmetry is deliberate: a human who has
+completed the in-tenant verification may make exactly this change, and blocking
+it would block the only legitimate route out of *Requires further validation*.
+On a human pull request both conditions are therefore **reported for reviewer
+attention, not blocked** — so the reviewer, not the gate, is what stops an
+unearned transition. The same holds for the path allowlist: `matrix/`,
+`crosswalk/`, `checklists/`, `CHANGELOG.md` and `.github/watch-state/` bound
+what an *automated* run may touch, while ordinary maintenance of `scripts/`,
+`docs/`, `tests/` and the workflows is expected from a human and only noted.
 
 **No tier merges anything.** Every automated change arrives as a draft pull
 request for human approval.

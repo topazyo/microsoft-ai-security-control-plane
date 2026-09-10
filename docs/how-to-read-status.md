@@ -52,7 +52,7 @@ Used when Microsoft's own sources conflict, or when a status cannot be confirmed
 3. **Exact-wording discipline.** Status is taken from the source's own qualifiers ("(preview)", "Release state: Generally available", Roadmap "Launched") — not inferred from tone or headlines.
 4. **Conflicts are labelled, not resolved by assumption.** Conflicting sources ⇒ **Requires further validation**, plus a note quoting both sides with dates.
 5. **In-tenant confirmation for contested or rollout-gated rows.** A Launched/GA label still gets a "confirm in your tenant" caveat where regional rollout applies.
-6. **Monthly refresh, recorded.** Rows are re-verified monthly against the What's-new pages and Message Center; every status change lands in [`CHANGELOG.md`](../CHANGELOG.md) (date, rows touched, status changes).
+6. **Monthly refresh, recorded — and re-verification does not mean the same thing for every row.** Most rows are re-fetched each month from their pinned Microsoft Learn source by the automated cadence. The Message Center is not, and cannot be: as the table above says, its posts are visible only inside a tenant's admin center and have no public URL, so no automated run reaches them. The GitHub Docs pages behind matrix rows 12 and 13, and the NIST and CSA cross-walk rows, are the same in effect — their dates move only when a human re-reads them. Every status change lands in [`CHANGELOG.md`](../CHANGELOG.md) (date, rows touched, status changes), and how the two halves divide is set out in [`docs/agent-cadence.md`](agent-cadence.md).
 
 ## Worked example — why this discipline matters
 

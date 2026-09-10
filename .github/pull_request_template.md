@@ -35,10 +35,17 @@
 ## Validators
 
 - [ ] `python -m compileall -q scripts`
+- [ ] `python -m unittest discover -s tests` (paste the `Ran N tests` line — a
+      green *job* is not a green *step*)
 - [ ] `python scripts/validate_bot_pr.py --base-ref origin/main`
-- [ ] `python scripts/stale_guard.py` (expect **zero** stale items — any stale
-      item is a finding, not a known exception; no CI check enforces this, so
-      paste the output rather than inferring it from a green run)
+- [ ] `python scripts/stale_guard.py` — expect **exactly the documented
+      human-only residue** and nothing else: the dated items no agent run can
+      advance, listed in `checklists/capability-status-verification.md` Group 9,
+      plus the OWASP cross-walk row whose date deliberately does not advance
+      (see `crosswalk/framework-crosswalk.md`). Any item outside that list is a
+      finding, and so is one that has been overdue long enough to stop being
+      merely due. This script exits 0 either way and no CI check enforces its
+      output, so paste it rather than inferring it from a green run.
 - [ ] `Validate matrix` is green **and actually ran** — if this pull request
       touches only paths outside the workflow's filter, the check will not
       appear; paste the local validator output below instead. An absent check

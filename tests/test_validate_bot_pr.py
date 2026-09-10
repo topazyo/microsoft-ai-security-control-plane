@@ -480,5 +480,109 @@ class DocumentedTestCommandTests(unittest.TestCase):
         self.assertNotIn("-t .", self.documented_command())
 
 
+class ContributorInstructionTests(unittest.TestCase):
+    """The contributor-facing gate lists must match the gates CI runs.
+
+    `CONTRIBUTING.md` and the pull-request template both listed three validator
+    commands while `Validate matrix` ran four: the test suite was missing from
+    both for two releases, so a contributor following the instructions could not
+    reproduce the gate that would fail their pull request.
+
+    Adding the line is only half a fix. `DocumentedTestCommandTests` above pins
+    the command in `docs/agent-cadence.md` against the workflow's, but it reads
+    neither of these files -- so without this class the two new lines would be
+    unguarded prose, free to drift from CI exactly as the doc's `-t .` spelling
+    did. An instruction nobody executes is not checked by being written down.
+    """
+
+    WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate-matrix.yml"
+    TARGETS = (
+        REPO_ROOT / "CONTRIBUTING.md",
+        REPO_ROOT / ".github" / "pull_request_template.md",
+    )
+    COMMAND = re.compile(r"python3? -m unittest discover[^\n`)]*")
+
+    @staticmethod
+    def normalise(command: str) -> str:
+        """Compare the discovery arguments, not the interpreter spelling.
+
+        CI runs `python3` because it runs on Linux; these two documents say
+        `python` throughout, which is what a Windows contributor has. That
+        difference is deliberate and not drift. `-v` is a CI log-verbosity
+        choice, not a flag that changes what runs. Everything else -- above all
+        the `-s tests` target, whose `-t .` variant shipped broken -- must match.
+        """
+        return " ".join(command.split()).replace(" -v", "").replace("python3 ", "python ")
+
+    def ci_command(self) -> str:
+        found = self.COMMAND.findall(self.WORKFLOW.read_text(encoding="utf-8"))
+        self.assertEqual(len(found), 1, "expected exactly one unittest command in the workflow")
+        return self.normalise(found[0])
+
+    def test_each_contributor_document_lists_the_test_suite(self):
+        for path in self.TARGETS:
+            with self.subTest(document=path.name):
+                found = self.COMMAND.findall(path.read_text(encoding="utf-8"))
+                self.assertTrue(found, f"{path.name} does not tell a contributor to run the tests")
+
+    def test_the_listed_command_is_the_one_ci_runs(self):
+        expected = self.ci_command()
+        for path in self.TARGETS:
+            for raw in self.COMMAND.findall(path.read_text(encoding="utf-8")):
+                with self.subTest(document=path.name, command=raw):
+                    self.assertEqual(self.normalise(raw), expected)
+
+    def test_no_contributor_document_uses_the_unimportable_top_level(self):
+        """`-t .` is the exact spelling that shipped broken in the cadence doc."""
+        for path in self.TARGETS:
+            with self.subTest(document=path.name):
+                for raw in self.COMMAND.findall(path.read_text(encoding="utf-8")):
+                    self.assertNotIn("-t .", raw)
+
+    def test_neither_document_still_promises_zero_stale_items(self):
+        """The replaced wording, pinned so it cannot come back.
+
+        "Expect zero stale items" was false whenever the recurring human step
+        was merely due rather than skipped, and an instruction to expect an
+        impossible state teaches a reader to scroll past the real findings.
+        """
+        for path in self.TARGETS:
+            with self.subTest(document=path.name):
+                # Asterisks stripped so the original "**zero** stale" is caught,
+                # and matched on adjacency rather than co-occurrence: the phrase
+                # "non-zero requires --fail-on-stale" is a true statement about
+                # the exit code and must not trip this.
+                text = path.read_text(encoding="utf-8").replace("*", "")
+                offenders = [
+                    line
+                    for line in text.splitlines()
+                    if "zero stale" in line and "used to say" not in line
+                ]
+                self.assertEqual(offenders, [])
+
+    def test_each_document_points_at_where_the_residue_is_enumerated(self):
+        """A cross-reference that names no location is not a cross-reference."""
+        for path in self.TARGETS:
+            with self.subTest(document=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("capability-status-verification.md", text)
+                self.assertIn("framework-crosswalk.md", text)
+
+    def test_the_referenced_checklist_actually_enumerates_the_residue(self):
+        """And the location it names must still contain the list.
+
+        Otherwise both documents would point a contributor at a section that no
+        longer says what they were sent there to read.
+        """
+        checklist = (
+            REPO_ROOT / "checklists" / "capability-status-verification.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Group 9", checklist)
+        group_nine = checklist[checklist.index("Group 9") :]
+        for expected in ("12", "13", "NIST", "CSA"):
+            with self.subTest(item=expected):
+                self.assertIn(expected, group_nine)
+
+
 if __name__ == "__main__":
     unittest.main()

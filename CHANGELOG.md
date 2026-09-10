@@ -2,7 +2,7 @@
 
 All notable changes to this repository are recorded here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows a **monthly refresh cadence**: every row in the capability-status matrix is re-verified against Microsoft Learn and the Microsoft 365 Message Center each month, and every verification pass is recorded below (date, rows touched, status changes).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows a **monthly refresh cadence**: every row in the capability-status matrix is re-verified each month and every verification pass is recorded below (date, rows touched, status changes). What "re-verified" means differs by row, and the difference is stated rather than smoothed over: most rows are re-fetched from their pinned Microsoft Learn source by the automated cadence, while the Microsoft 365 Message Center, the GitHub Docs pages behind matrix rows 12 and 13, and the NIST and CSA cross-walk rows can only be re-read by a human — so their dates move when a person moves them, and not otherwise. See [`docs/agent-cadence.md`](docs/agent-cadence.md).
 
 ## [Unreleased] — 2026-09-09 refresh
 
