@@ -47,7 +47,7 @@ Used when Microsoft's own sources conflict, or when a status cannot be confirmed
 
 ## How rows in this repository are verified
 
-1. **Primary source per row.** Every matrix row carries a Microsoft Learn or public Roadmap URL. No row's status is ever sourced from a launch/marketing blog.
+1. **Primary source per row.** Every matrix row carries a Microsoft Learn or public Roadmap URL — or, for the two GitHub rows (12 and 13), a GitHub Docs URL, admitted as first-party documentation for a Microsoft-owned product and registered human-only. No row's status is ever sourced from a launch/marketing blog.
 2. **Last-verified date per row.** The date the source was actually re-read — not the date the row was written. A row older than the monthly window is treated as stale.
 3. **Exact-wording discipline.** Status is taken from the source's own qualifiers ("(preview)", "Release state: Generally available", Roadmap "Launched") — not inferred from tone or headlines.
 4. **Conflicts are labelled, not resolved by assumption.** Conflicting sources ⇒ **Requires further validation**, plus a note quoting both sides with dates.

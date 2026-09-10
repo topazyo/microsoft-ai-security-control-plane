@@ -30,7 +30,8 @@ What these tests do NOT cover, stated rather than implied:
   - `--dry-run`'s truncation at the `## [0.1.0]` marker, which is presentation.
 
 Fixture hygiene: every string here is synthetic. `check_confidentiality` skips
-anything that is not .md or .json, so tests/ is outside it.
+anything outside `SCANNED_SUFFIXES` (.md, .json, .ps1, .yml), so tests/ is
+outside it.
 """
 
 from __future__ import annotations

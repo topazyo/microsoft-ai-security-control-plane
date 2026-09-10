@@ -609,10 +609,13 @@ def filter_collapsed(signals: dict) -> bool:
     Not an error and not a change: the fetch succeeded and the fingerprint is
     honest about what it saw. It is the *coverage* that has gone -- the source is
     now watching only its page-level text, and every later run will call that
-    "unchanged". Observed live on `sentinel-data-connectors-reference`, whose
-    filter matched 0 of 47 headings because the connector entries on that page
-    are not headings at all; the source had appeared to be watching something
-    only because the phrase signal was, incorrectly, taken over the whole page.
+    "unchanged". Observed live on `sentinel-data-connectors-reference` in
+    September 2026, whose filter matched 0 of 47 headings -- not because a
+    heading filter cannot reach a collapsible entry, which was the original and
+    since-retracted diagnosis, but because section extraction did not then treat
+    a collapsible entry as a section. That source no longer collapses: its
+    filter now matches 2 of the page's 437 entry titles. The check stays because
+    the condition is a property of any filter, not of that page.
     """
     return bool(signals.get("relevance_filtered")) and not signals.get("heading_count")
 

@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
-"""Tests for the two registry-coverage checks in scripts/validate_bot_pr.py.
+"""Tests for the deterministic gates in scripts/validate_bot_pr.py, and for the
+published instructions that must match them.
 
 Standard library only. Run with `python3 -m unittest discover -s tests`.
 
-These checks answer questions the watcher's own validation cannot, because they
-need the matrix as well as the registry: does every row have a source at all,
-and do the counts `docs/agent-cadence.md` asserts in prose still hold? Both
-failed silently before — rows 12 and 13 were unwatched through a full release
-while the doc claimed coverage of "every matrix row", and three of the doc's
-figures had drifted, one of them by seven.
+The two registry-coverage checks came first, and they answer questions the
+watcher's own validation cannot, because they need the matrix as well as the
+registry: does every row have a source at all, and do the counts
+`docs/agent-cadence.md` asserts in prose still hold? Both failed silently before
+— rows 12 and 13 were unwatched through a full release while the doc claimed
+coverage of "every matrix row", and three of the doc's figures had drifted, one
+of them by seven.
+
+The rest of the file grew from the same principle applied to the other gates and
+to the prose describing them: the exact-key column contract, the confidentiality
+scan's scope, the `--bot` path allowlist, the escalation-direction gate, GitHub
+Docs containment, the workflow path filters, the published suite size, and the
+contributor-facing command lists. Several of those are not registry checks at
+all; what they share is that each was a place where something could report a
+pass over work it had not done, or a document could describe a rule the code no
+longer had.
 """
 
 from __future__ import annotations
@@ -245,6 +256,30 @@ class ConfidentialityScopeTests(unittest.TestCase):
     def test_an_impossible_octet_is_not_an_address(self):
         self.assertEqual(self.ipv4_hits("build 999.1.2.3"), [])
 
+    def test_a_v_initial_word_does_not_suppress_a_real_address(self):
+        """The hole an earlier, wider form of this filter opened.
+
+        It allowed 12 free characters after a bare `\\bv`, so any v-initial
+        word within that window disabled the confidentiality check for the
+        address after it -- and "VPN", "VM" and "via" are all idiomatic in this
+        domain. A filter in a confidentiality gate that quietly widens is worse
+        than no filter at all, so each of these is pinned.
+        """
+        for text, expected in (
+            ("VPN gateway 10.0.0.1", "10.0.0.1"),
+            ("the connector VM at 10.0.0.5", "10.0.0.5"),
+            ("traffic via 10.1.2.3", "10.1.2.3"),
+            ("value 10.2.3.4", "10.2.3.4"),
+            ("vendor: 10.9.8.7", "10.9.8.7"),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(self.ipv4_hits(text), [expected])
+
+    def test_only_an_adjacent_version_marker_suppresses(self):
+        for text in ("version 1.0.0.0", "ver=1.0.0.0", "v1.0.0.0", "ModuleVersion = '1.0.0.0'"):
+            with self.subTest(text=text):
+                self.assertEqual(self.ipv4_hits(text), [])
+
     def test_the_committed_hooks_and_workflows_are_clean_under_the_widened_scan(self):
         """The widening must not redden the tree it was added for."""
         findings = self.scan(
@@ -305,18 +340,22 @@ class PathAllowlistTests(unittest.TestCase):
         state while the allowlist reads the committed diff, so uncommitted
         edits are judged by the label gate and skipped by the allowlist.
         """
-        original = validate.working_tree_dirty
-        validate.working_tree_dirty = lambda: True
+        original = validate.uncommitted_governed_changes
+        validate.uncommitted_governed_changes = lambda: " M matrix/capability-status-matrix.md"
         try:
             findings = self.check([], bot=True)
         finally:
-            validate.working_tree_dirty = original
+            validate.uncommitted_governed_changes = original
         self.assertTrue(
             any("the allowlist did not run over them" in e for e in findings.errors),
             findings.errors,
         )
+        self.assertTrue(
+            any("matrix/capability-status-matrix.md" in e for e in findings.errors),
+            findings.errors,
+        )
 
-    def test_an_empty_diff_with_a_clean_tree_is_not_an_error_in_bot_mode(self):
+    def test_an_empty_diff_with_no_governed_changes_is_not_an_error_in_bot_mode(self):
         """Writing nothing is often the correct automated outcome.
 
         The adjudicator's permission table requires an issue and never a pull
@@ -324,17 +363,97 @@ class PathAllowlistTests(unittest.TestCase):
         empty diff would manufacture a red daily run on exactly the path
         operators most need to trust.
         """
-        original = validate.working_tree_dirty
-        validate.working_tree_dirty = lambda: False
+        original = validate.uncommitted_governed_changes
+        validate.uncommitted_governed_changes = lambda: ""
         try:
             findings = self.check([], bot=True)
         finally:
-            validate.working_tree_dirty = original
+            validate.uncommitted_governed_changes = original
         self.assertEqual(findings.errors, [])
         self.assertTrue(
             any("no automated change was committed" in n for n in findings.notes),
             findings.notes,
         )
+
+    def test_an_uninspectable_tree_is_not_reported_as_clean(self):
+        """"Clean" and "could not look" must not be the same answer.
+
+        A failing `git status` is exactly the case where uncommitted edits are
+        invisible to both the diff and this probe -- the situation the check
+        exists to catch -- so answering with a reassuring note would assert a
+        state nobody observed.
+        """
+        original = validate.uncommitted_governed_changes
+        validate.uncommitted_governed_changes = lambda: None
+        try:
+            findings = self.check([], bot=True)
+        finally:
+            validate.uncommitted_governed_changes = original
+        self.assertTrue(
+            any("could not be inspected" in e for e in findings.errors), findings.errors
+        )
+        self.assertEqual(findings.notes, [])
+
+    def test_the_dirtiness_probe_is_scoped_to_governed_paths(self):
+        """Unscoped, it was dirty on every single automated run.
+
+        `git status --porcelain` reports untracked files, and both bot
+        workflows leave an untracked `evidence/` directory inside the checkout.
+        An unscoped probe therefore failed the exact correct-outcome path the
+        check exists to keep green. This asserts the pathspec is really passed,
+        against the real subprocess call rather than a stand-in.
+        """
+        seen = {}
+
+        def fake_run(command, **kwargs):
+            seen["command"] = command
+
+            class Result:
+                stdout = ""
+
+            return Result()
+
+        original = validate.subprocess.run
+        validate.subprocess.run = fake_run
+        try:
+            validate.uncommitted_governed_changes()
+        finally:
+            validate.subprocess.run = original
+        self.assertIn("--", seen["command"])
+        for governed in validate.GOVERNED_PATHS:
+            with self.subTest(path=governed):
+                self.assertIn(governed, seen["command"])
+
+    def test_the_governed_paths_match_the_allowlist(self):
+        """The pathspec and PATH_ALLOWLIST must describe the same content.
+
+        If they drift, the probe either misses an edit the allowlist governs or
+        trips on one it does not.
+        """
+        # The allowlist is extension-specific -- `.github/watch-state` admits
+        # `.json` only, the content directories `.md` -- so the probe uses the
+        # extension each path actually carries.
+        suffixes = {".github/watch-state": ".json"}
+        for governed in validate.GOVERNED_PATHS:
+            if governed.endswith(".md"):
+                probe = governed
+            else:
+                probe = f"{governed}/x{suffixes.get(governed, '.md')}"
+            with self.subTest(path=probe):
+                self.assertTrue(
+                    any(p.match(probe) for p in validate.PATH_ALLOWLIST),
+                    f"{probe} is in GOVERNED_PATHS but not PATH_ALLOWLIST",
+                )
+
+    def test_the_evidence_bundle_is_ignored_rather_than_merely_unscoped(self):
+        """Belt and braces: the artifact must not be committable either.
+
+        Scoping the probe stops it failing the run; gitignoring the bundle
+        stops an adjudicator's `git add -A` committing upstream page text to a
+        path outside the allowlist.
+        """
+        ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("evidence/", ignored)
 
     def test_an_empty_diff_is_only_a_note_for_a_human(self):
         findings = self.check([], bot=False)
@@ -431,6 +550,37 @@ class CrosswalkRowNameTests(unittest.TestCase):
                 "Second Framework framework-versions row",
             },
         )
+
+    def test_a_second_table_under_the_same_heading_is_not_absorbed(self):
+        """Skipping blank lines must not let a following table in.
+
+        Markdown separates adjacent tables with a blank line -- exactly the
+        construct that no longer ends the scan -- so without a width check the
+        second table's rows, and its `|---|---|` separator, would become valid
+        `crosswalk_rows` values that `stale_guard` never tracks.
+        """
+        text = (
+            "| Framework | Version / edition cited | Primary source | Last verified |\n"
+            "|---|---|---|---|\n"
+            "| Real Framework | v1 | url | 2026-01-01 |\n"
+            "\n"
+            "| Other column | Second |\n"
+            "|---|---|\n"
+            "| Not A Framework | x |\n"
+        )
+        self.assertEqual(
+            validate.crosswalk_row_names(text), {"Real Framework framework-versions row"}
+        )
+
+    def test_a_separator_row_never_becomes_a_name(self):
+        text = (
+            "| Framework | Version / edition cited | Primary source | Last verified |\n"
+            "|---|---|---|---|\n"
+            "| Real Framework | v1 | url | 2026-01-01 |\n"
+            "\n"
+            "|---|---|---|---|\n"
+        )
+        self.assertNotIn("--- framework-versions row", validate.crosswalk_row_names(text))
 
     def test_the_two_parsers_agree_on_the_committed_crosswalk(self):
         """Asserted against the real file, both directions, no hard-coded list."""
@@ -869,6 +1019,42 @@ class PublishedTestCountTests(unittest.TestCase):
         stated = self.CLAIM.search(self.CHANGELOG.read_text(encoding="utf-8"))
         self.assertEqual(int(stated.group(1)), self.discovered())
 
+    def test_the_matrix_heading_row_count_is_derived(self):
+        """The heading advertises a row count that only a human re-derives.
+
+        CONTRIBUTING has to ask for it to be "re-derived by counting the table",
+        which is the instruction-in-prose pattern `check_doc_counts` exists to
+        replace. The authoritative count is already computed by
+        `matrix_row_ids`.
+        """
+        text = validate.MATRIX.read_text(encoding="utf-8")
+        heading = re.search(r"^## The matrix \([^)]*?(\d+) rows", text, re.MULTILINE)
+        self.assertIsNotNone(heading, "the matrix heading no longer states a row count")
+        self.assertEqual(int(heading.group(1)), len(validate.matrix_row_ids(text)))
+
+    def test_the_documented_phrase_count_matches_the_watcher(self):
+        """"Nine status-bearing phrases" is asserted in two files and derived in none.
+
+        It drifts silently the moment a phrase is added to or removed from
+        `STATUS_PHRASES`, in a file neither sentence lives in.
+        """
+        watch = load_script("watch_sources")
+        expected = len(watch.STATUS_PHRASES)
+        words = {
+            1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+            6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
+        }
+        # Two files, two spellings: "nine status-bearing phrases" in the matrix
+        # and "nine status phrases" in the cadence doc.
+        stated = re.compile(r"which of (\w+) status(?:[- ]bearing)? phrases")
+        found = 0
+        for path in (validate.CADENCE_DOC, validate.MATRIX):
+            for match in stated.finditer(path.read_text(encoding="utf-8")):
+                found += 1
+                with self.subTest(document=path.name, stated=match.group(1)):
+                    self.assertEqual(match.group(1), words.get(expected, str(expected)))
+        self.assertGreaterEqual(found, 2, "the phrase-count sentence has moved or gone")
+
 
 class PathFilterTests(unittest.TestCase):
     """The two trigger lists in validate-matrix.yml must stay identical.
@@ -912,6 +1098,53 @@ class PathFilterTests(unittest.TestCase):
                 break
         self.assertTrue(collected, f"no paths parsed for `{event}`")
         return collected
+
+    CONTRIBUTOR_DOCS = (
+        REPO_ROOT / "CONTRIBUTING.md",
+        REPO_ROOT / ".github" / "pull_request_template.md",
+        REPO_ROOT / "SECURITY.md",
+    )
+
+    def test_no_document_states_a_narrower_scan_scope_than_the_code(self):
+        """The scan's scope is a published property of a security control.
+
+        It was widened to `.ps1` and `.yml` when `.claude/**` entered the path
+        filters, while four reader-facing surfaces went on saying `.md`/`.json`
+        only — telling a contributor that a literal address in a tracked hook is
+        safe when it now fails the build.
+        """
+        stale = re.compile(r"`\.md`\s*(?:/|or|and)\s*`\.json`\s*files?")
+        for path in self.CONTRIBUTOR_DOCS:
+            with self.subTest(document=path.name):
+                self.assertIsNone(
+                    stale.search(path.read_text(encoding="utf-8")),
+                    f"{path.name} still states the pre-widening scan scope",
+                )
+
+    def test_the_documented_suffixes_match_the_code(self):
+        """Where a document enumerates the suffixes, the list must be the live one."""
+        for path in self.CONTRIBUTOR_DOCS:
+            text = path.read_text(encoding="utf-8")
+            if ".ps1" not in text:
+                continue
+            for suffix in sorted(validate.SCANNED_SUFFIXES):
+                with self.subTest(document=path.name, suffix=suffix):
+                    self.assertIn(f"`{suffix}`", text)
+
+    def test_contributing_lists_every_path_filter_it_claims_to(self):
+        """A real check reported as absent is the mirror of an absent one.
+
+        A contributor whose pull request touches only `tests/` or `.claude/`
+        used to read this list, conclude the check would not appear, and take
+        the template's escape hatch.
+        """
+        text = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        marker = "does not trigger on every path"
+        self.assertIn(marker, text)
+        section = text[text.index(marker) : text.index(marker) + 900]
+        for required in ("tests/", ".claude/", "scripts/", ".github/watch-state/"):
+            with self.subTest(path=required):
+                self.assertIn(required, section)
 
     def test_the_two_trigger_lists_are_identical(self):
         self.assertEqual(self.paths_for("pull_request"), self.paths_for("push"))

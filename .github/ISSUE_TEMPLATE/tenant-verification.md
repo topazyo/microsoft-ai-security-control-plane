@@ -26,7 +26,7 @@ Automated runs may raise this issue. They may not change the row.
 Quote the source verbatim — headings with or without a `(preview)` qualifier,
 availability-table values, Roadmap status. Paraphrase is not evidence.
 
-- Source URL (Microsoft Learn or public Microsoft 365 Roadmap only):
+- Source URL (Microsoft Learn, public Microsoft 365 Roadmap, or GitHub Docs for a GitHub capability):
 - Quoted wording:
 - Do Microsoft's own sources agree with each other? If not, quote both sides.
 

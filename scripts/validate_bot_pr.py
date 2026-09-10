@@ -35,6 +35,13 @@ Checks
                            count rather than trust the sentence; the instruction
                            worked and the number drifted anyway, twice. A count
                            in prose is a claim, and claims here are checked.
+10. human-only containment — a `docs.github.com` source may be registered under
+                           `human_only_sources` only, never under `sources`, so
+                           no automated run fetches it and no GitHub Docs page
+                           content reaches the model tier. This is the condition
+                           on which ALLOWED_SOURCE_HOSTS admits the host at all,
+                           and it was published to contributors as a guarantee
+                           while nothing enforced it.
 
 Exit code 0 = all checks pass. Non-zero = at least one violation.
 """
@@ -88,8 +95,10 @@ ALLOWED_SOURCE_HOSTS = [
     # relaxation toward blogs. It is admitted on one condition, and that
     # condition is now a gate rather than a convention: a docs.github.com source
     # is registered under `human_only_sources`, never under `sources`, so the
-    # watcher never fetches it and no GitHub page content ever reaches the
-    # adjudicator. `check_human_only_containment` enforces it. See
+    # watcher never fetches it and no GitHub *Docs* page content reaches the
+    # adjudicator. Not "no GitHub content": four watched entries fetch Markdown
+    # from raw.githubusercontent.com, which is the MicrosoftDocs source for
+    # pages Learn renders. `check_human_only_containment` enforces this. See
     # docs/agent-cadence.md.
     GITHUB_DOCS_HOST,
 ]
@@ -133,28 +142,55 @@ class Findings:
         self.notes.append(f"[ok]   {message}")
 
 
-def working_tree_dirty() -> bool:
-    """True if anything is modified, staged or untracked.
+# The content an automated run is allowed to touch, as plain paths. Kept beside
+# PATH_ALLOWLIST, which is the same set as regexes; this form is what git takes
+# as a pathspec.
+GOVERNED_PATHS = [
+    "matrix",
+    "crosswalk",
+    "checklists",
+    "CHANGELOG.md",
+    ".github/watch-state",
+]
+
+
+def uncommitted_governed_changes() -> str | None:
+    """Uncommitted edits to content an automated change may modify.
 
     Used to tell "the automated run correctly wrote nothing" apart from "the
     automated run wrote something and never committed it". Only the second is a
     failure, and only the second is invisible to a diff against the base ref.
 
-    A git failure returns False rather than raising: this runs inside a check
-    whose job is the allowlist, and turning an unavailable git into a hard exit
-    would fail runs for a reason unrelated to what is being validated.
+    **Scoped to `GOVERNED_PATHS`, and the scoping is the whole point.** An
+    unscoped `git status --porcelain` reports untracked files too, and both bot
+    workflows leave an untracked `evidence/` directory inside the checkout --
+    `--evidence-out evidence/evidence.json` in the monthly refresh, and the
+    downloaded artifact in the source watch -- neither of which is gitignored.
+    So the unscoped form was dirty on every single run, which would have failed
+    exactly the correct-outcome path this check exists to keep green: an
+    adjudicator that files an issue and commits nothing.
+
+    Tri-state, because "clean" and "could not look" must not be the same
+    answer. `git status` failing -- a dubious-ownership refusal, a broken index,
+    git absent from PATH -- is precisely the case where uncommitted edits would
+    be invisible to the diff AND to this probe, so answering "clean" there would
+    assert a state nobody observed. That is the pattern this file rejects
+    everywhere else.
+
+    Returns the porcelain output when something is pending, `""` when the probe
+    ran and found nothing, and None when the probe could not run.
     """
     try:
         output = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--"] + GOVERNED_PATHS,
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             check=True,
         ).stdout
     except (subprocess.CalledProcessError, OSError):
-        return False
-    return bool(output.strip())
+        return None
+    return output.strip()
 
 
 def changed_files(base_ref: str | None) -> list[str]:
@@ -236,17 +272,26 @@ def check_paths(files: list[str], findings: Findings, bot: bool) -> None:
             # `check_escalation_direction` reads the working tree for its
             # "after" state -- so uncommitted edits would be judged by the label
             # gate and skipped entirely by the allowlist.
-            if working_tree_dirty():
+            pending = uncommitted_governed_changes()
+            if pending is None:
                 findings.error(
                     "path allowlist",
-                    "the working tree has uncommitted changes but the diff against the "
-                    "base ref is empty, so the allowlist did not run over them. An "
-                    "automated change must be committed before it is validated.",
+                    "the diff against the base ref is empty and the working tree could not "
+                    "be inspected (`git status` failed), so it is unknown whether an "
+                    "automated change was left uncommitted. This is not a clean result.",
+                )
+            elif pending:
+                listed = ", ".join(sorted(line[3:] for line in pending.splitlines()))
+                findings.error(
+                    "path allowlist",
+                    "the diff against the base ref is empty but these governed files have "
+                    f"uncommitted changes, so the allowlist did not run over them: {listed}. "
+                    "An automated change must be committed before it is validated.",
                 )
             else:
                 findings.note(
-                    "path allowlist: no automated change was committed, and the working "
-                    "tree is clean — nothing for the allowlist to check"
+                    "path allowlist: no automated change was committed and no governed file "
+                    "has uncommitted changes — nothing for the allowlist to check"
                 )
             return
         findings.note("path allowlist: no changed files to check")
@@ -528,6 +573,7 @@ def crosswalk_row_names(text: str) -> set[str]:
             break
     if header_index is None:
         return set()
+    width = len([c for c in lines[header_index].strip().strip("|").split("|")])
     names: set[str] = set()
     for line in lines[header_index + 2 :]:
         stripped = line.strip()
@@ -536,6 +582,18 @@ def crosswalk_row_names(text: str) -> set[str]:
                 continue
             break
         cells = [c.strip() for c in stripped.strip("|").split("|")]
+        # Same width as the header, and not a separator row. Skipping blank
+        # lines is what lets a *second* table under the same heading be read as
+        # part of this one -- markdown requires a blank line between adjacent
+        # tables -- and its `|---|---|` separator would otherwise contribute the
+        # name "--- framework-versions row". A row of the wrong table would then
+        # be a valid `crosswalk_rows` value that `stale_guard` never tracks:
+        # coverage asserted and never watched, which is the state this check
+        # exists to prevent.
+        if len(cells) != width:
+            continue
+        if all(set(c) <= set("-: ") for c in cells):
+            continue
         if cells and cells[0]:
             names.add(cells[0] + CROSSWALK_ROW_SUFFIX)
     return names
@@ -706,10 +764,17 @@ def check_human_only_containment(findings: Findings, registry: dict | None = Non
 
     It is worth a gate rather than a convention because of what it contains.
     Per the registry's own reason, the page is "perfectly fetchable, and that is
-    exactly why the rule matters": keeping it out of `sources` is what stops any
-    non-Microsoft-Learn page content from reaching the model tier at all. A
-    promise that only holds while everyone remembers it is the class of control
-    this repository does not accept anywhere else.
+    exactly why the rule matters": admitting `docs.github.com` to the citation
+    allowlist widened what this repository may *cite*, and keeping those entries
+    out of `sources` is what stops that from also widening what an automated run
+    may *fetch and adjudicate*.
+
+    Scoped to GitHub Docs, not to "non-Learn content", because the watched array
+    is not Learn-only: four entries fetch from `raw.githubusercontent.com` (the
+    MicrosoftDocs repositories Learn renders), one from the OWASP GenAI site and
+    one from the public Microsoft 365 Roadmap. A promise that only holds while
+    everyone remembers it is the class of control this repository does not
+    accept anywhere else -- and so is one stated more broadly than it holds.
     """
     if registry is None:
         registry = load_registry(findings)
@@ -804,7 +869,13 @@ def check_doc_counts(findings: Findings) -> None:
         )
 
 
-VERSION_CONTEXT = re.compile(r"(?i)(?:version|assemblyversion|\bver\b|\bv)[^\n]{0,12}$")
+# Adjacency, not a window. The first version of this allowed 12 free characters
+# after a bare `\bv`, which suppressed a genuine address after any v-initial
+# word: "VPN gateway 10.0.0.1", "the connector VM at 10.0.0.5" and "traffic via
+# 10.1.2.3" were all silently dropped from a confidentiality gate. A version
+# marker has to sit immediately before the number, separated only by the
+# punctuation a version assignment uses.
+VERSION_CONTEXT = re.compile(r"(?i)(?:(?:version|\bver)[\s=:'\"()-]{0,4}|\bv)$")
 
 
 def looks_like_a_version(text: str, start: int) -> bool:
@@ -821,8 +892,17 @@ def looks_like_a_version(text: str, start: int) -> bool:
 
     Decided on the preceding text rather than the digits: `1.0.0.0` is a
     perfectly valid address, so nothing about the number itself distinguishes
-    the two. Narrow by design -- a false negative here costs a missed tenant
-    identifier only if someone writes one directly after the word "version".
+    the two.
+
+    **The residual hole, stated exactly rather than reassuringly.** An address
+    is missed only when a version marker sits immediately before it -- after
+    `version`/`ver` with at most four characters of assignment punctuation
+    between, or after a bare `v` with nothing between. So `version 10.0.0.1`,
+    `ver=10.0.0.1` and `v10.0.0.1` are not reported. Everything else is,
+    including the cases an earlier and much wider form of this filter dropped:
+    `VPN gateway 10.0.0.1`, `the connector VM at 10.0.0.5`, `traffic via
+    10.1.2.3`. Those are pinned as negative tests, because a filter in a
+    confidentiality gate that quietly widens is worse than no filter at all.
     """
     return bool(VERSION_CONTEXT.search(text[max(0, start - 24) : start]))
 

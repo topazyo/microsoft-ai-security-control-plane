@@ -79,6 +79,11 @@ microsoft-ai-security-control-plane/
 │   ├── stale_guard.py                     # tier D4: staleness guard over the recorded last-verified dates
 │   ├── validate_bot_pr.py                 # the deterministic gate: sourcing, labelling, confidentiality
 │   └── changelog_entry.py                 # appends a refresh record in the existing format
+├── tests/                                 # standard-library unittest; `python -m unittest discover -s tests`
+│   ├── test_watch_sources.py              # signal scoping, registry shape, invariants over the committed baseline
+│   ├── test_validate_bot_pr.py            # the gates themselves, including the cases where one could not run
+│   ├── test_stale_guard.py                # the staleness arithmetic and the step-output contract CI reads
+│   └── test_changelog_entry.py            # one heading per calendar month, and the released-section protection
 └── .github/
     ├── workflows/                         # daily source watch, monthly refresh, weekly stale guard, validate gate
     ├── watch-state/                       # sources.json (pinned source registry) + fingerprints.json (baseline)

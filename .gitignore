@@ -17,6 +17,12 @@ Desktop.ini
 
 # Python (scripts/ holds the refresh-cadence automation)
 __pycache__/
+
+# The watcher's evidence bundle. Written into the checkout by the automation
+# workflows and never committed: it is a run artifact, it carries text taken
+# verbatim from upstream pages, and an adjudicator's `git add -A` would
+# otherwise commit it to a path outside the automated-change allowlist.
+evidence/
 *.py[cod]
 .pytest_cache/
 

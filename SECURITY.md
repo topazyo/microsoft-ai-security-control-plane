@@ -60,12 +60,14 @@ auto-provided `GITHUB_TOKEN` where it can.
 
 Two mechanical notes for contributors:
 
-- **No literal email address anywhere in a `.md` or `.json` file.** The
+- **No literal email address anywhere in a scanned file** — `.md`, `.json`,
+  `.ps1` or `.yml`. The
   confidentiality validator (`scripts/validate_bot_pr.py`) treats any address
   outside `example.*` as a possible tenant identifier and fails the build.
   Reference an organization by URL instead. This policy file follows its own
   rule — that is why MSRC appears above as a link.
-- The validator scans only `.md` and `.json` files and never reads commit
-  messages, so the confidentiality rules apply to commit messages by review,
-  not by automation. Write every commit message to the same public-safe bar as
+- The validator scans `.md`, `.json`, `.ps1` and `.yml` files — the tracked
+  PowerShell hooks and the workflow definitions are included because they are
+  executable influence surfaces — and never reads commit messages, so the
+  confidentiality rules apply to commit messages by review, not by automation. Write every commit message to the same public-safe bar as
   the content.

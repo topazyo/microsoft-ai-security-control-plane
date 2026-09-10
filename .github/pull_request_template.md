@@ -9,8 +9,11 @@
 
 - [ ] Status label is exactly one of the four legend labels: **GA** /
       **Public Preview** / **Roadmap** / **Requires further validation**
-- [ ] Primary-source URL is Microsoft Learn or the public Microsoft 365
-      Roadmap — not a launch blog, not Tech Community, not a Message Center post
+- [ ] Primary-source URL is Microsoft Learn, the public Microsoft 365 Roadmap,
+      or GitHub Docs for a GitHub capability — not a launch blog, not Tech
+      Community, not a Message Center post. A GitHub Docs source must be
+      registered under `human_only_sources`, never under `sources`; the build
+      fails otherwise
 - [ ] Last-verified date is the date the source was **actually re-read**
 - [ ] The details section carries at least one **verbatim status-bearing quote**
 - [ ] Conflicting sources are recorded as **Requires further validation**, not
@@ -54,14 +57,15 @@
 ## Confidentiality (never delete this section)
 
 The validator mechanically checks only four categories (GUID, email address,
-IPv4, `onmicrosoft.com`) and only in `.md`/`.json` files, and it never reads
+IPv4, `onmicrosoft.com`) and only in `.md`, `.json`, `.ps1` and `.yml` files
+(`SCANNED_SUFFIXES` in `scripts/validate_bot_pr.py`), and it never reads
 commit messages. The rest is on review:
 
 - [ ] No organization names
 - [ ] No license counts or tenant entitlement state — SKU/plan **names** only
 - [ ] No tenant, directory, workspace or subscription identifiers
 - [ ] No hostnames, internal URLs, or IP addresses
-- [ ] No user names or email addresses (**no literal address in any `.md`/`.json`
+- [ ] No user names or email addresses (**no literal address in any scanned
       file — it fails the build**)
 - [ ] No log excerpts or screenshots
 - [ ] No NDA or private-preview-program material

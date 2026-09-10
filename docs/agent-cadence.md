@@ -188,10 +188,15 @@ Two consequences to know before reading a `[changed]` line:
   unaffected, because its phrase set is empty at either scope. Every phrase they
   lose was traced to the section holding it before this was shipped, and all of
   them sit under SQL, container, Kubernetes, multicloud or deprecated-connector
-  headings. So the first run after this change reports three sources with a
-  documented cause and no status meaning: run
-  `python3 scripts/watch_sources.py --update-baseline` and record it in
-  `CHANGELOG.md`, exactly as any adjudicated non-status change is recorded.
+  headings. That first run happened: it was adjudicated as a signal-scope
+  re-baseline and recorded in `CHANGELOG.md`, and the baseline was then
+  re-derived again by the row-9 extraction fix, which is why
+  `purview-service-description` also moved in the end — not from scoping, whose
+  effect on it was nil, but from gaining the two phrase-region fields.
+  **Do not run `--update-baseline` on the strength of this paragraph.** A
+  re-baseline follows a plain detection run whose every `[changed]` line has
+  been accounted for first (`CONTRIBUTING.md`); running it to make a diff go
+  away is how a real upstream change gets silently absorbed.
 
 ### When a filter matches nothing
 
@@ -391,10 +396,23 @@ credential.
 They are not the only entries in that array, and the others sit there for the
 opposite kind of reason. The `docs.github.com` Copilot-policy and MCP pages are
 perfectly fetchable; they are kept out of `sources` *precisely* so that no
-non-Microsoft-Learn page content ever reaches the model tier. A `reason` is a
-required key on every human-only entry for exactly this: "cannot be fetched" and
-"must not be fetched" are indistinguishable from the outside and have opposite
-remedies.
+**GitHub Docs** page content reaches the model tier. `check_human_only_containment`
+in `scripts/validate_bot_pr.py` enforces that, so it is a gate rather than a
+convention.
+
+Stated at that width deliberately, because the wider claim would be false: the
+watched array is not Learn-only. Four entries fetch Markdown from
+`raw.githubusercontent.com` — the MicrosoftDocs repositories that Learn itself
+renders — one fetches the OWASP GenAI landing page, and one the public Microsoft
+365 Roadmap. What the containment buys is narrower and still worth having:
+admitting `docs.github.com` to the citation allowlist (decision D3) widened what
+this repository may *cite*, and keeping those entries out of `sources` stops
+that admission from also widening what an automated run may *fetch and
+adjudicate*.
+
+A `reason` is a required key on every human-only entry for exactly this:
+"cannot be fetched" and "must not be fetched" are indistinguishable from the
+outside and have opposite remedies.
 
 ## CHANGELOG discipline
 

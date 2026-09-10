@@ -5,17 +5,21 @@ Standard library only. Run with `python3 -m unittest discover -s tests`.
 
 The guard decides one thing - which dated items are past the staleness window -
 and two published surfaces read that decision. `.github/workflows/stale-guard.yml`
-opens or updates the staleness issue only when the `stale` output is the literal
-string `true`, and `.github/pull_request_template.md` asks a human to run the
-script and read its item list. Until now nothing pinned either the arithmetic or
+opens or updates the staleness issue whenever the `stale` output is anything
+other than the literal string `false`, so an absent output is read as stale
+rather than as clean, and `.github/pull_request_template.md` asks a human to run
+the script and read its item list. Until now nothing pinned either the arithmetic or
 the output contract.
 
 **Fixtures for behaviour, live files for shape.** Every assertion about a count,
 an exit code or an output value runs against a synthetic repository written into
 a temporary directory, because the tracked last-verified dates move whenever a
-human re-verifies a row: rows 12 and 13 advanced to 2026-09-10 on the day this
-file was written, taking the default-window report from 5 items to 3 and the
-`--window-days 0` report from 5 to 16. A test asserting "3 stale items" or "18
+human re-verifies a row, and because the calendar moves them too. Rows 12 and 13
+advanced to 2026-09-10 on the day this file was written, taking the
+default-window report from 5 items to 3. The `--window-days 0` report went 5
+(measured 2026-09-09) to 18 (the next day, before the re-read) to 16 (after it)
+-- the day rolling moves that count far more than the re-read does, and the
+re-read alone can only ever lower it. A test asserting "3 stale items" or "18
 dated items" would have been wrong twice in one week, and a rotting test teaches
 maintainers to edit tests instead of reading them. The committed files are used
 only for assertions that survive re-verification: that every target still parses,
@@ -61,7 +65,8 @@ What these tests do NOT cover, stated rather than implied:
 
 Fixture hygiene: every fixture string here is synthetic. No tenant-shaped
 identifier, no real URL and no third-party page text appears in this file -
-`check_confidentiality` skips anything that is not .md or .json, so tests/ is
+`check_confidentiality` reads only the suffixes in `SCANNED_SUFFIXES`
+(.md, .json, .ps1, .yml), so tests/ is
 outside it and the discipline has to be manual.
 """
 

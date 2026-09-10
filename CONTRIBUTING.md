@@ -10,9 +10,16 @@ Everything below follows from that.
 
 Every proposed or changed capability row must carry:
 
-1. A **primary-source URL** — Microsoft Learn or the public Microsoft 365
-   Roadmap. Nothing else is a source of truth for status. Tech Community and
-   launch blogs are official-adjacent context only, never the citation.
+1. A **primary-source URL** — Microsoft Learn, the public Microsoft 365
+   Roadmap, or GitHub Docs for a GitHub capability. These are the three hosts
+   `ALLOWED_SOURCE_HOSTS` accepts; nothing else is a source of truth for status,
+   and Tech Community and launch blogs are official-adjacent context only, never
+   the citation. **GitHub Docs carries one extra condition, and it is enforced:**
+   such a source is registered under `human_only_sources` in
+   `.github/watch-state/sources.json`, never under `sources`, so no automated
+   run fetches it and its row's date moves only when a human re-reads it.
+   `check_human_only_containment` fails the build otherwise. Matrix rows 12 and
+   13 are the live examples.
 2. A **last-verified date** — the date you actually re-read the source, not the
    date you edited the file.
 3. A **status label from the legend**, exactly: `GA`, `Public Preview`,
@@ -110,8 +117,10 @@ that would fail their pull request.
 
 **The first three must pass. `stale_guard.py` is different, and reading it as a
 pass/fail gate is a mistake:** it exits 0 whether or not anything is stale
-(non-zero requires `--fail-on-stale`), and CI pipes it into the run summary, so
-no check anywhere enforces its output. Paste the output into your pull request
+(non-zero requires `--fail-on-stale`), and the `Validate matrix` workflow pipes
+it into the run summary with `|| true`, so nothing there can fail a build on it.
+The weekly `Stale guard` workflow *does* read its `stale` output — but to open or
+update an issue, never to fail a check. Paste the output into your pull request
 rather than inferring it from a green run.
 
 **What to expect from it: the documented human-only residue, and nothing more.**
@@ -129,15 +138,14 @@ version of this file told you to expect exactly one stale item, the CSA AICM row
 which stopped being true the day that row was re-verified. Name what you see and
 why it is expected; do not silence it by advancing a date you did not re-read.
 
-Note that the guard's own output is **not** enforced by any CI check: the
-`Validate matrix` workflow pipes it into the run summary with `|| true`, so it
-can never fail a build. Paste the output into the pull request instead of
-inferring it from a green check.
-
 **The CI workflow does not trigger on every path.** `Validate matrix` runs on
-changes under `matrix/`, `crosswalk/`, `checklists/`, `scripts/`,
-`.github/workflows/`, `.github/watch-state/`, `CHANGELOG.md`, and the
-documentation paths listed in the workflow. If your pull request touches only
+changes under `matrix/`, `crosswalk/`, `checklists/`, `scripts/`, `tests/`,
+`.claude/`, `.github/workflows/`, `.github/watch-state/`,
+`.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`, `CHANGELOG.md`,
+and the documentation paths listed in the workflow. `tests/` and `.claude/`
+matter especially: the first is where the gate's own tests live, and the second
+holds the tracked adjudicator specification and rules, which are executable
+influence surfaces. If your pull request touches only
 paths outside that list, the check will not appear at all — paste your local
 validator output into the pull request body instead. **Never report an absent
 check as a green one.**
@@ -147,7 +155,8 @@ check as a green one.**
 Both are hard CI failures, and both are easy to hit while writing something
 perfectly reasonable:
 
-- **No literal email address in any `.md` or `.json` file.** The
+- **No literal email address in any scanned file** — `.md`, `.json`, `.ps1` or
+  `.yml`, per `SCANNED_SUFFIXES` in `scripts/validate_bot_pr.py`. The
   confidentiality regex exempts only `example.*` and cannot tell a public
   support address from a tenant identifier. Reference organizations by URL.
 - **No detection-query content.** A fenced code block tagged `kql` or `kusto`,
@@ -156,11 +165,24 @@ perfectly reasonable:
   cell. Runnable detections are out of scope by design and belong in a separate
   detection-pack repository.
 
-Also avoid **four-component version numbers** in content files — the
-confidentiality check reads any four dot-separated number groups as an IP
-address, and its "that's a version string, not an IP" guard never fires. Three
-components are fine. (Writing an example of one here would fail the build; that
-is how the guard was confirmed dead.)
+**Four-component version numbers** need a version cue next to them. The
+confidentiality check reads four dot-separated number groups as an IP address,
+and exempts one only when a version marker sits immediately before it: `version`
+or `ver` with at most four characters of assignment punctuation between, or a
+bare `v` with nothing between. So `version 1.0.0.0`, `ModuleVersion = '1.0.0.0'`
+and `v1.0.0.0` pass, while the same four groups written with no version cue in
+front of them are still reported — as is a genuine address such as one after
+"VPN gateway" or "via", which the exemption deliberately does not cover. Three
+components are never matched at all.
+
+*(No unqualified example appears in this paragraph, because writing one here
+would fail the build — which is the rule working, not a limitation.)*
+
+*(This paragraph previously said the guard "never fires" and had been "confirmed
+dead". It was: it re-tested the match against the shape that produced it, so the
+exemption was unreachable. That is fixed, and the rule above is what the code
+now does — pinned by tests in both directions, because a filter in a
+confidentiality gate that quietly widens is worse than no filter at all.)*
 
 ## How the automated cadence interacts with human pull requests
 
