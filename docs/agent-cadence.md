@@ -311,7 +311,7 @@ and update both workflows together.
 ## Operating the cadence
 
 ```bash
-python3 -m unittest discover -s tests -t .             # signal-scoping and registry tests
+python3 -m unittest discover -s tests                  # signal-scoping and registry tests
 python3 scripts/watch_sources.py                       # detect changes (read-only)
 python3 scripts/watch_sources.py --update-baseline     # accept the current state as the baseline
 python3 scripts/stale_guard.py                         # list rows past the staleness window
