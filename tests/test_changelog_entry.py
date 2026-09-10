@@ -39,6 +39,7 @@ import contextlib
 import importlib.util
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -219,8 +220,14 @@ class MainTests(unittest.TestCase):
     """End-to-end against a synthetic CHANGELOG, via the module's own constant."""
 
     def setUp(self):
-        self.changelog = REPO_ROOT / "tests" / "__changelog_fixture__.md"
-        self.addCleanup(self.changelog.unlink, missing_ok=True)
+        # A temporary directory, not a file inside `tests/`. An in-tree fixture
+        # is one interrupted run away from being left behind and committed --
+        # and `tests/` is inside the workflow's path filters, so a stray
+        # `__changelog_fixture__.md` would trigger CI while looking like a real
+        # file. `tempfile` cleans up even when the process is killed mid-test.
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.changelog = Path(directory.name) / "CHANGELOG.md"
 
     def run_entry(self, document: str, *argv: str) -> str:
         self.changelog.write_text(document, encoding="utf-8")
@@ -302,8 +309,9 @@ class ConsoleEncodingTests(unittest.TestCase):
         document = DOCUMENT.replace(
             "- An existing bullet.", f"- A bullet containing {self.UNENCODABLE} an arrow."
         )
-        changelog = REPO_ROOT / "tests" / "__encoding_fixture__.md"
-        self.addCleanup(changelog.unlink, missing_ok=True)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        changelog = Path(directory.name) / "CHANGELOG.md"
         changelog.write_text(document, encoding="utf-8")
         buffer = io.TextIOWrapper(
             io.BytesIO(), encoding="cp1252", errors="strict", write_through=True

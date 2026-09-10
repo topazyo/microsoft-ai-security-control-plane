@@ -220,6 +220,45 @@ class ConfidentialityScopeTests(unittest.TestCase):
         self.assertIn("no longer exist and were not read", note)
         self.assertIn("docs/a-file-that-was-deleted.md", note)
 
+    def ipv4_hits(self, text: str) -> list[str]:
+        pattern = dict(validate.CONFIDENTIALITY_PATTERNS)["IPv4 address"]
+        return [
+            m.group(0)
+            for m in pattern.finditer(text)
+            if not validate.looks_like_a_version(text, m.start())
+        ]
+
+    def test_a_real_address_is_still_reported(self):
+        """Pin the positive case first: a filter that excludes everything is worse."""
+        self.assertEqual(self.ipv4_hits("host at 192.168.0.1 today"), ["192.168.0.1"])
+
+    def test_a_four_part_version_is_not_an_address(self):
+        """Idiomatic in the two file types the scan was just widened to cover.
+
+        The guard this replaces was dead code -- it re-tested the match against
+        the shape that produced it -- so `ModuleVersion = '1.0.0.0'` in a
+        tracked PowerShell hook would have been a hard confidentiality failure.
+        """
+        self.assertEqual(self.ipv4_hits("ModuleVersion = '1.0.0.0'"), [])
+        self.assertEqual(self.ipv4_hits("ver 1.0.0.0"), [])
+
+    def test_an_impossible_octet_is_not_an_address(self):
+        self.assertEqual(self.ipv4_hits("build 999.1.2.3"), [])
+
+    def test_the_committed_hooks_and_workflows_are_clean_under_the_widened_scan(self):
+        """The widening must not redden the tree it was added for."""
+        findings = self.scan(
+            [
+                ".claude/hooks/instructions-loaded-log.ps1",
+                ".claude/hooks/postcompact-wrap-up.ps1",
+                ".github/workflows/source-watch.yml",
+                ".github/workflows/monthly-refresh.yml",
+                ".github/workflows/stale-guard.yml",
+                ".github/workflows/validate-matrix.yml",
+            ]
+        )
+        self.assertEqual(findings.errors, [])
+
     def test_the_no_diff_fallback_reads_the_machine_written_state(self):
         """With no diff this list is the whole scan.
 
@@ -259,10 +298,42 @@ class PathAllowlistTests(unittest.TestCase):
         validate.check_paths(files, findings, bot=bot)
         return findings
 
-    def test_an_empty_diff_is_an_error_in_bot_mode(self):
-        findings = self.check([], bot=True)
+    def test_an_empty_diff_with_uncommitted_work_is_an_error_in_bot_mode(self):
+        """The dangerous case: edits the diff cannot see.
+
+        `check_escalation_direction` reads the working tree for its "after"
+        state while the allowlist reads the committed diff, so uncommitted
+        edits are judged by the label gate and skipped by the allowlist.
+        """
+        original = validate.working_tree_dirty
+        validate.working_tree_dirty = lambda: True
+        try:
+            findings = self.check([], bot=True)
+        finally:
+            validate.working_tree_dirty = original
         self.assertTrue(
-            any("the allowlist did not run" in e for e in findings.errors), findings.errors
+            any("the allowlist did not run over them" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_an_empty_diff_with_a_clean_tree_is_not_an_error_in_bot_mode(self):
+        """Writing nothing is often the correct automated outcome.
+
+        The adjudicator's permission table requires an issue and never a pull
+        request for a move out of "Requires further validation", so failing an
+        empty diff would manufacture a red daily run on exactly the path
+        operators most need to trust.
+        """
+        original = validate.working_tree_dirty
+        validate.working_tree_dirty = lambda: False
+        try:
+            findings = self.check([], bot=True)
+        finally:
+            validate.working_tree_dirty = original
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("no automated change was committed" in n for n in findings.notes),
+            findings.notes,
         )
 
     def test_an_empty_diff_is_only_a_note_for_a_human(self):
@@ -335,6 +406,41 @@ class CrosswalkRowNameTests(unittest.TestCase):
             "| Row 1 - something | LLM02:2026 | prose |\n"
         )
         self.assertEqual(validate.crosswalk_row_names(text), set())
+
+    def test_a_blank_line_inside_the_table_does_not_truncate_it(self):
+        """The two parsers must agree on what a cross-walk row is called.
+
+        `stale_guard.parse_table_dates` skips blank lines inside a table. This
+        one used to stop at the first, so a stray line after the first data row
+        left it seeing one name while the guard still saw four -- and three
+        legitimate registry entries would have been reported as claiming
+        cross-walk rows that do not exist, blaming the registry for a stray line
+        in a markdown file.
+        """
+        text = (
+            "| Framework | Version / edition cited | Primary source | Last verified |\n"
+            "|---|---|---|---|\n"
+            "| First Framework | v1 | url | 2026-01-01 |\n"
+            "\n"
+            "| Second Framework | v2 | url | 2026-01-02 |\n"
+        )
+        self.assertEqual(
+            validate.crosswalk_row_names(text),
+            {
+                "First Framework framework-versions row",
+                "Second Framework framework-versions row",
+            },
+        )
+
+    def test_the_two_parsers_agree_on_the_committed_crosswalk(self):
+        """Asserted against the real file, both directions, no hard-coded list."""
+        guard = load_script("stale_guard")
+        text = validate.CROSSWALK.read_text(encoding="utf-8")
+        from_guard = {
+            identifier + validate.CROSSWALK_ROW_SUFFIX
+            for identifier, _ in guard.parse_table_dates(text, "Last verified")
+        }
+        self.assertEqual(from_guard, validate.crosswalk_row_names(text))
 
     def test_parsing_stops_at_the_end_of_the_table(self):
         text = (
@@ -563,6 +669,207 @@ class DocumentedTestCommandTests(unittest.TestCase):
         self.assertNotIn("-t .", self.documented_command())
 
 
+class EscalationDirectionTests(unittest.TestCase):
+    """The repository's hardest control, and both of its fail-open doors.
+
+    A row may never be moved out of "Requires further validation" by an
+    automated run. The column-resolution door was closed earlier in this branch;
+    the row-lookup door was still open. `new.get(row_id, [])` returned an empty
+    list for a row that could not be found, `if new_labels and ...`
+    short-circuited, and the run printed "no row moved out of 'Requires further
+    validation'" over a comparison it never made -- so renaming the identifier
+    was enough to escape the check, and `matrix_row_ids` strips non-digits, so
+    `5` -> `5a` left `check_source_coverage` clean as well.
+    """
+
+    HEADER = "| # | Capability | Status | Primary source | Last verified |"
+    DIVIDER = "|---|---|---|---|---|"
+
+    def matrix(self, identifier: str, status: str) -> str:
+        row = f"| {identifier} | Thing | {status} | https://learn.microsoft.com/x | 2026-09-01 |"
+        return "\n".join([self.HEADER, self.DIVIDER, row, ""])
+
+    def check(self, before: str, after: str, bot: bool = True) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_escalation_direction(
+            "base", findings, bot, before_text=before, after_text=after
+        )
+        return findings
+
+    def test_an_unchanged_row_passes(self):
+        text = self.matrix("5", "**Requires further validation**")
+        findings = self.check(text, text)
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("no row moved out" in n for n in findings.notes), findings.notes
+        )
+
+    def test_a_direct_transition_is_caught(self):
+        findings = self.check(
+            self.matrix("5", "**Requires further validation**"), self.matrix("5", "**GA**")
+        )
+        self.assertTrue(
+            any("was moved out of 'Requires further validation'" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_renaming_the_identifier_does_not_escape_the_check(self):
+        """The fail-open: `5` -> `5a` used to be a silent pass."""
+        findings = self.check(
+            self.matrix("5", "**Requires further validation**"), self.matrix("5a", "**GA**")
+        )
+        self.assertTrue(
+            any("no row with that identifier exists" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_deleting_the_row_does_not_escape_the_check(self):
+        findings = self.check(
+            self.matrix("5", "**Requires further validation**"),
+            "\n".join([self.HEADER, self.DIVIDER, ""]),
+        )
+        self.assertTrue(
+            any("no row with that identifier exists" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_an_unreadable_status_cell_does_not_escape_the_check(self):
+        findings = self.check(
+            self.matrix("5", "**Requires further validation**"), self.matrix("5", "")
+        )
+        self.assertTrue(
+            any("yields no legend label" in e for e in findings.errors), findings.errors
+        )
+
+    def test_no_reassuring_note_beside_any_of_them(self):
+        for after in (
+            self.matrix("5a", "**GA**"),
+            self.matrix("5", ""),
+            "\n".join([self.HEADER, self.DIVIDER, ""]),
+        ):
+            with self.subTest(after=after[:40]):
+                findings = self.check(self.matrix("5", "**Requires further validation**"), after)
+                self.assertEqual(
+                    [n for n in findings.notes if "no row moved out" in n], []
+                )
+
+    def test_a_human_gets_a_note_rather_than_a_hard_failure(self):
+        """Only an automated run is blocked; a human may have done the work."""
+        findings = self.check(
+            self.matrix("5", "**Requires further validation**"),
+            self.matrix("5", "**GA**"),
+            bot=False,
+        )
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("Reviewer must confirm" in n for n in findings.notes), findings.notes
+        )
+
+
+class HumanOnlyContainmentTests(unittest.TestCase):
+    """GitHub Docs may be cited, but never watched.
+
+    The README and the new-row-proposal template both publish this to
+    contributors as a guarantee -- "registered under `human_only_sources`, never
+    under `sources`" -- while nothing enforced it. Per the registry's own
+    reason the page is "perfectly fetchable, and that is exactly why the rule
+    matters": the containment is what keeps non-Learn page content away from the
+    model tier entirely.
+    """
+
+    def check(self, registry: dict) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_human_only_containment(findings, registry=registry)
+        return findings
+
+    def test_the_committed_registry_passes(self):
+        findings = validate.Findings()
+        validate.check_human_only_containment(findings)
+        self.assertEqual(findings.errors, [])
+
+    def test_a_github_docs_url_in_the_watched_array_is_an_error(self):
+        findings = self.check(
+            {
+                "sources": [
+                    {"id": "sneaky", "url": "https://docs.github.com/en/copilot/x"}
+                ],
+                "human_only_sources": [],
+            }
+        )
+        self.assertTrue(
+            any("is a docs.github.com source in the watched" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_a_github_docs_cite_url_is_caught_too(self):
+        """A watched entry can carry a fetch URL and a different citation URL."""
+        findings = self.check(
+            {
+                "sources": [
+                    {
+                        "id": "sneaky",
+                        "url": "https://raw.githubusercontent.com/x/y",
+                        "cite_url": "https://docs.github.com/en/copilot/x",
+                    }
+                ],
+                "human_only_sources": [],
+            }
+        )
+        self.assertTrue(any("cite_url" in e for e in findings.errors), findings.errors)
+
+    def test_a_human_only_github_docs_source_is_fine(self):
+        """The permitted placement must not be reported."""
+        findings = self.check(
+            {
+                "sources": [],
+                "human_only_sources": [
+                    {"id": "gh", "cite_url": "https://docs.github.com/en/copilot/x"}
+                ],
+            }
+        )
+        self.assertEqual(findings.errors, [])
+
+    def test_the_citation_allowlist_and_the_gate_share_one_pattern(self):
+        """Or the condition could drift away from the admission it qualifies."""
+        self.assertIn(validate.GITHUB_DOCS_HOST, validate.ALLOWED_SOURCE_HOSTS)
+
+
+class PublishedTestCountTests(unittest.TestCase):
+    """A test total stated in prose must be derived, not transcribed.
+
+    `CHANGELOG.md` advertises the size of this suite. That number was written by
+    hand and was wrong within one commit -- the entry said 196 while the suite
+    ran 208 -- which is the same defect class `check_doc_counts` exists to stop
+    for the registry-derived figures, in the one place no check was looking.
+
+    Pinning it here rather than in `DOC_COUNT_CLAIMS` because the count is a
+    property of the test tree, not of the registry, and this is the only file
+    that can ask the loader for it.
+    """
+
+    CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+    CLAIM = re.compile(r"The suite is \*\*(\d+)\*\* tests")
+
+    def discovered(self) -> int:
+        """The number of tests unittest actually collects."""
+        loader = unittest.TestLoader()
+        suite = loader.discover(str(REPO_ROOT / "tests"), top_level_dir=str(REPO_ROOT / "tests"))
+        self.assertEqual(loader.errors, [], "test discovery reported import errors")
+        return suite.countTestCases()
+
+    def test_the_changelog_states_the_suite_size_in_the_checked_form(self):
+        """A removed sentence must fail, not silently disable the check."""
+        self.assertIsNotNone(
+            self.CLAIM.search(self.CHANGELOG.read_text(encoding="utf-8")),
+            "CHANGELOG.md no longer states the suite size in the checked form; "
+            "the sentence may be reworded but not removed",
+        )
+
+    def test_the_published_suite_size_matches_the_suite(self):
+        stated = self.CLAIM.search(self.CHANGELOG.read_text(encoding="utf-8"))
+        self.assertEqual(int(stated.group(1)), self.discovered())
+
+
 class PathFilterTests(unittest.TestCase):
     """The two trigger lists in validate-matrix.yml must stay identical.
 
@@ -715,12 +1022,25 @@ class ContributorInstructionTests(unittest.TestCase):
 
         Otherwise both documents would point a contributor at a section that no
         longer says what they were sent there to read.
+
+        Anchored on the Group 9 *heading*, not on the string "Group 9": the
+        first occurrence of that string is a cross-reference inside Group 1, so
+        slicing from it covered almost the whole document and every assertion
+        below passed against unrelated prose.
         """
         checklist = (
             REPO_ROOT / "checklists" / "capability-status-verification.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("Group 9", checklist)
-        group_nine = checklist[checklist.index("Group 9") :]
+        heading = re.search(r"^\*\*Group 9 [^\n]*$", checklist, re.MULTILINE)
+        self.assertIsNotNone(heading, "no Group 9 heading in the checklist")
+        rest = checklist[heading.end() :]
+        # Stop at the footer stamp, which recaps every group and would otherwise
+        # satisfy these assertions on its own.
+        footer = re.search(r"^\*Version \d", rest, re.MULTILINE)
+        group_nine = rest[: footer.start()] if footer else rest
+        self.assertLess(
+            len(group_nine), len(checklist) // 2, "the Group 9 slice is not a section"
+        )
         for expected in ("12", "13", "NIST", "CSA"):
             with self.subTest(item=expected):
                 self.assertIn(expected, group_nine)

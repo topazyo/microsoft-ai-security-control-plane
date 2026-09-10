@@ -72,8 +72,14 @@ jobs:
             echo
             echo "Re-verification is a human step for any row whose status is"
             echo "**Requires further validation**, and for the Message Center,"
-            echo "CSA AICM, NIST AI 600-1 and GitHub Docs sources, which no"
-            echo "fingerprint can re-verify. Their staleness means a human is"
+            echo "CSA AICM, NIST AI 600-1 and GitHub Docs sources. Their reasons"
+            echo "differ and the registry records each one: the Message Center is"
+            echo "tenant-scoped with no public URL and the CSA workbook is"
+            echo "registration-gated, so neither can be fetched at all; the NIST"
+            echo "publication is a static PDF read by a human; and the GitHub Docs"
+            echo "pages are perfectly fetchable but kept outside the automated"
+            echo "path **by design**, so that no non-Learn page content reaches"
+            echo "the model tier. In every case their staleness means a human is"
             echo "overdue, not that the automation is failing. See"
             echo "checklists/capability-status-verification.md, Group 9."
             echo

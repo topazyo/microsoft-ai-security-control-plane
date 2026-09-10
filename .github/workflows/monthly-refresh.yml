@@ -116,16 +116,18 @@ jobs:
             monthly consolidation described in its "Monthly consolidation" section.
 
             Evidence bundle: evidence/evidence.json
-            Sources that could NOT be fetched this run: ${{ steps.watch.outputs.failed_sources }}
-            Sources whose watched signal DEGRADED this run: ${{ steps.watch.outputs.collapsed_filter_sources }} ${{ steps.watch.outputs.coverage_warning_sources }}
+            Sources that could NOT be fetched this run: ${{ steps.watch.outputs.failed_sources || 'none' }}
+            Sources whose relevance filter COLLAPSED this run (fetched fine, watching nothing): ${{ steps.watch.outputs.collapsed_filter_sources || 'none' }}
+            Sources whose page-level coverage NARROWED this run: ${{ steps.watch.outputs.coverage_warning_sources || 'none' }}
 
             Advance a row's last-verified date only where its source was fetched
-            successfully this run AND is not listed as degraded above. The second
-            condition is not redundant: a degraded source fetches successfully
-            while watching less than the registry claims, so "fetched
-            successfully" alone would authorise advancing a date on a signal that
-            has gone blind. Record any degraded source in the CHANGELOG entry
-            rather than letting the new baseline absorb it silently.
+            successfully this run AND appears in neither of the two degraded
+            lists above. The second condition is not redundant: a degraded source
+            fetches successfully while watching less than the registry claims, so
+            "fetched successfully" alone would authorise advancing a date on a
+            signal that has gone blind. Record any degraded source in the
+            CHANGELOG entry rather than letting the new baseline absorb it
+            silently.
 
             Write exactly one CHANGELOG heading for this calendar month using
             `scripts/changelog_entry.py`. Open a draft pull request; never merge.

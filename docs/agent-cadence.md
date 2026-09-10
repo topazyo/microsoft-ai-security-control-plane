@@ -270,18 +270,41 @@ be quietly present in a single day's run.
 
 ## What the cadence cannot find at all
 
-No watched source is a discovery surface, and that is the whole of the argument —
-not a count of how many are per-capability pages. Most of the registry is
-per-capability pages, which can only ever report drift on a row that **already
-exists**. The rest are not discovery surfaces either: the two Defender for Cloud
-release-notes pages are the registry's only "what's new" style sources, with no
-Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel equivalent; the
-aggregate reference pages carry a `relevance_filter` scoped to the entries
-existing rows already cite, so a genuinely new capability appearing on one of
-them is filtered *out* by construction; and the two framework sources watch an
-edition token, not Microsoft's product surface at all. **The automated cadence is
-therefore structurally incapable of finding a capability that should become a new
-row.**
+The watched surface cannot be relied on for discovery — which is a weaker and
+truer claim than "no watched source can ever surface a new capability", and the
+difference is worth stating precisely because the registry refutes the stronger
+form.
+
+Most of the registry is per-capability pages, which can only ever report drift on
+a row that **already exists**. The two framework sources watch an edition token,
+not Microsoft's product surface at all.
+
+**The release-notes and aggregate reference pages are a partial exception.** Their
+`relevance_filter` is *topical*, not an enumeration of the entries existing rows
+cite: `defender-release-notes` and its archive filter on `\bAI\b`, `\bFoundry\b`
+and `artificial intelligence`, and `apply_relevance_filter` keeps every heading
+matching one of those. So a brand-new AI entry on those pages is in scope, moves
+`headings` and `heading_count`, and is reported as a change. The committed
+baseline already holds in-scope headings for capabilities no matrix row cites —
+AI posture management on GCP Vertex, the Data and AI security dashboard,
+threat protection for AI agents. Saying those are "filtered out by construction"
+would be false, and it was.
+
+What is true is narrower, and it is still enough to make discovery a human step:
+
+- **Coverage.** Defender for Cloud is the only product with a watched what's-new
+  page. Nothing watches the Purview, Defender XDR, Defender for Cloud Apps,
+  Entra or Sentinel equivalents, so a new capability announced there is invisible
+  to every tier.
+- **Interpretation.** A reported change is an instruction to re-adjudicate the
+  rows that source backs. Nothing in the cadence turns an unrecognised heading
+  into a row proposal, and the adjudicator's permitted writes do not include
+  adding a row. A new entry therefore surfaces as "this source changed", and a
+  human decides whether it means a new row.
+
+**So the cadence can occasionally show you a capability you have no row for, and
+it can never propose the row.** Treat the watched what's-new coverage as one
+narrow product's early warning, not as discovery.
 
 That gap is stated rather than closed, and the README and the matrix now say the
 same thing rather than promising more: the automated half of the monthly refresh

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -1091,10 +1092,18 @@ class CoverageSignalWiringTests(unittest.TestCase):
         # and removing `shell: bash` did not redden the suite.
         self.assertGreaterEqual(checked, 3, "the piped-step detector matched nothing")
 
-    @staticmethod
-    def _is_pipe(line: str) -> bool:
-        """A shell pipe, as opposed to `||`, a YAML block scalar, or a table."""
-        body = line.strip()
+    EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+
+    @classmethod
+    def _is_pipe(cls, line: str) -> bool:
+        """A shell pipe, as opposed to `||`, a YAML block scalar, or a table.
+
+        Actions expressions are stripped rather than used to skip the whole
+        line: an earlier version bailed out on any line containing `${{`, so a
+        piped command that also interpolated an output -- an entirely ordinary
+        shape -- was silently exempt from the check.
+        """
+        body = cls.EXPRESSION.sub("", line).strip()
         if body in {"run: |", "run: |-", "run: |+"}:
             return False
         return "|" in body.replace("||", "")
@@ -1132,7 +1141,7 @@ class CoverageSignalWiringTests(unittest.TestCase):
             if stripped and (len(line) - len(line.lstrip())) <= run_indent:
                 in_run = False
                 continue
-            if self._is_pipe(line) and "${{" not in line:
+            if self._is_pipe(line):
                 return True
         return False
 
@@ -1142,10 +1151,12 @@ class CommittedBaselineInvariantTests(unittest.TestCase):
 
     A re-baseline is otherwise self-confirming: the only thing validating the
     stored signal is the mechanism that wrote it, and `watch_sources.py` exits 0
-    unconditionally, so a future scope collapse would be a stderr `[warn]` inside
-    a green run — indistinguishable from a healthy source for as long as nobody
-    re-derives it by hand. These run in the existing validate job, need no
-    network, and turn that class of drift into a red build.
+    for every condition except a structurally broken registry -- a fetch failure
+    and a collapsed filter are both deliberately non-fatal -- so a future scope
+    collapse would be a stderr `[warn]` inside a green run, indistinguishable
+    from a healthy source for as long as nobody re-derives it by hand. These run
+    in the existing validate job, need no network, and turn that class of drift
+    into a red build.
     """
 
     def setUp(self):
