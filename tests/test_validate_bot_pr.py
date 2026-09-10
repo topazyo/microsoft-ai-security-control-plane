@@ -61,6 +61,149 @@ class ClaimedRowTests(unittest.TestCase):
         self.assertEqual(validate.claimed_crosswalk_rows(entries), {"NIST row"})
 
 
+class ColumnContractTests(unittest.TestCase):
+    """`matrix_table_rows` locates the table; `column_indexes` keys it exactly.
+
+    The two use different rules on purpose, and that mismatch was a silent
+    fail-open: renaming a header cell to "Last verified (UTC)" still finds
+    every data row while resolving no index, so each check body was guarded
+    out, every failure counter stayed 0, and the run printed "all 13 row(s)"
+    for three checks that examined none. A check that could not run is an
+    error, never a pass.
+    """
+
+    HEADER = "| # | Capability | Status | Primary source | Last verified |"
+    DIVIDER = "|---|---|---|---|---|"
+    ROW = "| 1 | Something | **GA** | https://learn.microsoft.com/x | 2026-09-01 |"
+
+    def matrix(self, header: str) -> str:
+        return "\n".join([header, self.DIVIDER, self.ROW, ""])
+
+    def check_matrix_against(self, text: str) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_matrix(findings, text=text)
+        return findings
+
+    def test_indexes_are_keyed_on_the_exact_header_text(self):
+        indexes = validate.column_indexes(self.matrix(self.HEADER))
+        self.assertEqual(indexes["Status"], 2)
+        self.assertEqual(indexes["Last verified"], 4)
+
+    def test_a_reworded_header_resolves_no_index(self):
+        """The precondition for the fail-open, pinned so the fix has a reason."""
+        reworded = self.HEADER.replace("Last verified", "Last verified (UTC)")
+        indexes = validate.column_indexes(reworded)
+        self.assertIsNone(indexes.get("Last verified"))
+
+    def test_the_table_is_still_located_when_a_header_is_reworded(self):
+        """Both halves of the mismatch, so neither can be 'fixed' in isolation."""
+        reworded = self.HEADER.replace("Last verified", "Last verified (UTC)")
+        self.assertEqual(len(validate.matrix_table_rows(self.matrix(reworded))), 1)
+
+    def test_a_clean_matrix_passes_and_notes_what_it_checked(self):
+        findings = self.check_matrix_against(self.matrix(self.HEADER))
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("status labels: all 1 row(s)" in n for n in findings.notes), findings.notes
+        )
+
+    def test_a_reworded_column_is_an_error_not_a_silent_pass(self):
+        reworded = self.HEADER.replace("Last verified", "Last verified (UTC)")
+        findings = self.check_matrix_against(self.matrix(reworded))
+        self.assertTrue(
+            any("header column 'Last verified' not found" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_a_reworded_column_emits_no_reassuring_note(self):
+        """The defect was the note, not only the missing error."""
+        reworded = self.HEADER.replace("Status", "Status (label)")
+        findings = self.check_matrix_against(self.matrix(reworded))
+        self.assertEqual([n for n in findings.notes if "status labels" in n], [])
+
+    def test_a_row_too_short_to_carry_a_column_is_reported(self):
+        text = "\n".join([self.HEADER, self.DIVIDER, self.ROW, "| 2 | Short |", ""])
+        findings = self.check_matrix_against(text)
+        self.assertTrue(
+            any("of 2 capability row(s) have a" in e for e in findings.errors), findings.errors
+        )
+
+
+class ConfidentialityScopeTests(unittest.TestCase):
+    """The scan's own note must be scoped to what it read.
+
+    check_confidentiality skips every file that is not `.md`/`.json`, so a
+    pull request touching only `scripts/`, `tests/` or `.github/workflows/`
+    scanned nothing and still reported "no tenant-shaped identifiers or
+    out-of-scope content found" — an unscoped absence claim, which is the one
+    thing this repository does not permit itself elsewhere.
+    """
+
+    def scan(self, files: list[str]) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_confidentiality(files, findings)
+        return findings
+
+    def test_a_python_only_change_does_not_claim_a_clean_scan(self):
+        findings = self.scan(["scripts/validate_bot_pr.py"])
+        note = " ".join(findings.notes)
+        self.assertIn("no changed .md/.json file to scan", note)
+        self.assertNotIn("no tenant-shaped identifiers or out-of-scope content found", note)
+
+    def test_a_markdown_change_names_the_files_it_read(self):
+        findings = self.scan(["docs/agent-cadence.md"])
+        note = " ".join(findings.notes)
+        self.assertIn("across 1 file(s)", note)
+        self.assertIn("docs/agent-cadence.md", note)
+
+    def test_skipped_changed_files_are_named_rather_than_ignored(self):
+        findings = self.scan(["docs/agent-cadence.md", "scripts/stale_guard.py"])
+        note = " ".join(findings.notes)
+        self.assertIn("outside this check", note)
+        self.assertIn("scripts/stale_guard.py", note)
+
+
+class PathAllowlistTests(unittest.TestCase):
+    """In --bot mode the allowlist is the gate, so an empty diff is a failure.
+
+    The bot workflows diff `origin/<ref>...HEAD`, which sees committed work
+    only, so an adjudicator whose edits were still uncommitted cleared the one
+    check that confines it to its allowed paths.
+    """
+
+    def check(self, files: list[str], bot: bool) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_paths(files, findings, bot=bot)
+        return findings
+
+    def test_an_empty_diff_is_an_error_in_bot_mode(self):
+        findings = self.check([], bot=True)
+        self.assertTrue(
+            any("the allowlist did not run" in e for e in findings.errors), findings.errors
+        )
+
+    def test_an_empty_diff_is_only_a_note_for_a_human(self):
+        findings = self.check([], bot=False)
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("no changed files to check" in n for n in findings.notes), findings.notes
+        )
+
+    def test_a_path_outside_the_allowlist_is_an_error_in_bot_mode(self):
+        findings = self.check(["scripts/watch_sources.py"], bot=True)
+        self.assertTrue(
+            any("outside the paths an automated change may modify" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_a_path_outside_the_allowlist_is_reported_not_enforced_for_a_human(self):
+        findings = self.check(["scripts/watch_sources.py"], bot=False)
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(
+            any("human change - not enforced" in n for n in findings.notes), findings.notes
+        )
+
+
 class CrosswalkRowNameTests(unittest.TestCase):
     """The authoritative list of cross-walk row names, derived not assumed.
 

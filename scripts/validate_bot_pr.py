@@ -178,6 +178,19 @@ def check_paths(files: list[str], findings: Findings, bot: bool) -> None:
     ordinary maintenance, so outside --bot mode it is reported, not enforced.
     """
     if not files:
+        if bot:
+            # In --bot mode the allowlist IS the gate, so an empty diff is not
+            # "nothing to check" — it means the gate did not run. The bot
+            # workflows diff `origin/<ref>...HEAD`, which sees committed work
+            # only, so an adjudicator whose edits are still uncommitted would
+            # otherwise clear the one check that confines it to its allowed
+            # paths.
+            findings.error(
+                "path allowlist",
+                "no changed file could be determined, so the allowlist did not run. An "
+                "automated change must be committed before it is validated.",
+            )
+            return
         findings.note("path allowlist: no changed files to check")
         return
     outside = [p for p in files if not any(pattern.match(p) for pattern in PATH_ALLOWLIST)]
@@ -191,11 +204,19 @@ def check_paths(files: list[str], findings: Findings, bot: bool) -> None:
             findings.note(f"path allowlist: '{path}' is outside the automated-change allowlist (human change - not enforced)")
 
 
-def check_matrix(findings: Findings) -> None:
-    if not MATRIX.exists():
-        findings.error("matrix", f"{MATRIX} not found")
-        return
-    text = MATRIX.read_text(encoding="utf-8")
+def check_matrix(findings: Findings, text: str | None = None) -> None:
+    """`text` is an injection seam for the tests.
+
+    The fail-open this guards against is a matrix state the committed tree must
+    never be in, so it cannot be exercised through the on-disk path — and
+    writing a fixture file into the repository to test a validator is worse
+    than passing the text in.
+    """
+    if text is None:
+        if not MATRIX.exists():
+            findings.error("matrix", f"{MATRIX} not found")
+            return
+        text = MATRIX.read_text(encoding="utf-8")
     indexes = column_indexes(text)
     rows = matrix_table_rows(text)
     if not rows:
@@ -206,14 +227,44 @@ def check_matrix(findings: Findings) -> None:
     verified_index = indexes.get("Last verified")
     source_index = indexes.get("Primary source")
 
+    # A renamed header cell used to disable three checks *and* print three
+    # positive notes over zero rows examined. `matrix_table_rows` locates the
+    # table by substring while `column_indexes` keys on the exact cell text, so
+    # renaming "Last verified" to "Last verified (UTC)" still found all 13 data
+    # rows and resolved no index — every check body was guarded out, every
+    # failure counter stayed 0, and the run reported "all 13 row(s)" for each.
+    # A check that could not run is an error; it is never a pass.
+    missing = [
+        name
+        for name, index in (
+            ("Status", status_index),
+            ("Last verified", verified_index),
+            ("Primary source", source_index),
+        )
+        if index is None
+    ]
+    for name in missing:
+        findings.error(
+            "matrix",
+            f"header column '{name}' not found in the capability table, so the checks keyed "
+            f"on it did not run. Header cells read {sorted(indexes)}; the keys are matched "
+            "exactly, so a reworded column must be renamed here too.",
+        )
+    if missing:
+        return
+
     label_failures = 0
     date_failures = 0
     domain_failures = 0
+    label_checked = 0
+    date_checked = 0
+    domain_checked = 0
 
     for row in rows:
         identifier = row[0] if row else "?"
 
-        if status_index is not None and len(row) > status_index:
+        if len(row) > status_index:
+            label_checked += 1
             labels = normalise_label(row[status_index])
             asserted = [l for l in labels if l in LEGEND_LABELS]
             unknown = [l for l in labels if l not in LEGEND_LABELS and not l.startswith('"')]
@@ -228,12 +279,14 @@ def check_matrix(findings: Findings) -> None:
                     )
                     label_failures += 1
 
-        if verified_index is not None and len(row) > verified_index:
+        if len(row) > verified_index:
+            date_checked += 1
             if not re.search(r"\b20\d{2}-\d{2}-\d{2}\b", row[verified_index]):
                 findings.error("last-verified date", f"row {identifier}: no ISO date in 'Last verified'")
                 date_failures += 1
 
-        if source_index is not None and len(row) > source_index:
+        if len(row) > source_index:
+            domain_checked += 1
             urls = URL_PATTERN.findall(row[source_index])
             if not urls:
                 findings.error("primary source", f"row {identifier}: no primary-source URL")
@@ -247,12 +300,30 @@ def check_matrix(findings: Findings) -> None:
                     )
                     domain_failures += 1
 
-    if not label_failures:
-        findings.note(f"status labels: all {len(rows)} row(s) use legend labels only")
-    if not date_failures:
-        findings.note(f"last-verified dates: all {len(rows)} row(s) carry an ISO date")
-    if not domain_failures:
-        findings.note(f"source domains: all {len(rows)} row(s) cite Learn, the public Roadmap or GitHub Docs")
+    # Each note names the number of rows the check actually examined, not the
+    # number of rows found. A row too short to reach a keyed column is a
+    # malformed table row, and reporting it as an error rather than skipping it
+    # is what stops "all N row(s)" from ever standing over an unexamined row.
+    for name, checked in (
+        ("Status", label_checked),
+        ("Last verified", date_checked),
+        ("Primary source", domain_checked),
+    ):
+        if checked != len(rows):
+            findings.error(
+                "matrix",
+                f"only {checked} of {len(rows)} capability row(s) have a '{name}' cell to "
+                "check; the rest are too short to reach that column.",
+            )
+
+    if not label_failures and label_checked == len(rows):
+        findings.note(f"status labels: all {label_checked} row(s) use legend labels only")
+    if not date_failures and date_checked == len(rows):
+        findings.note(f"last-verified dates: all {date_checked} row(s) carry an ISO date")
+    if not domain_failures and domain_checked == len(rows):
+        findings.note(
+            f"source domains: all {domain_checked} row(s) cite Learn, the public Roadmap or GitHub Docs"
+        )
 
 
 def citable_urls(entries: list[dict]) -> set[str]:
@@ -609,6 +680,16 @@ def check_doc_counts(findings: Findings) -> None:
 
 
 def check_confidentiality(files: list[str], findings: Findings) -> None:
+    """Scan changed `.md`/`.json` files, and report the scope of the scan.
+
+    The note this emits used to be an unscoped absence claim: it skips any file
+    that is not `.md`/`.json`, so a pull request touching only `scripts/` or
+    `tests/` or `.github/workflows/` scanned nothing and still reported "no
+    tenant-shaped identifiers or out-of-scope content found". That is the
+    standard this repository applies to its own published absence claims, so it
+    applies here: the note names how many files were read, and says plainly
+    when the answer is none.
+    """
     targets = [REPO_ROOT / f for f in files] if files else [
         REPO_ROOT / "matrix" / "capability-status-matrix.md",
         REPO_ROOT / "crosswalk" / "framework-crosswalk.md",
@@ -616,9 +697,20 @@ def check_confidentiality(files: list[str], findings: Findings) -> None:
         REPO_ROOT / "CHANGELOG.md",
     ]
     hits = 0
+    scanned: list[str] = []
+    skipped: list[str] = []
     for path in targets:
         if not path.exists() or path.suffix not in {".md", ".json"}:
+            if path.suffix not in {".md", ".json"}:
+                # POSIX spelling on every platform, so the note reads the same
+                # locally as in CI and matches the git-derived paths above.
+                skipped.append(
+                    path.relative_to(REPO_ROOT).as_posix()
+                    if path.is_relative_to(REPO_ROOT)
+                    else path.as_posix()
+                )
             continue
+        scanned.append(path.relative_to(REPO_ROOT).as_posix())
         text = path.read_text(encoding="utf-8")
         for name, pattern in CONFIDENTIALITY_PATTERNS:
             for match in pattern.findall(text):
@@ -633,7 +725,17 @@ def check_confidentiality(files: list[str], findings: Findings) -> None:
                 findings.error("scope", f"{path.relative_to(REPO_ROOT)}: contains {name}, which is out of scope")
                 hits += 1
     if not hits:
-        findings.note("confidentiality and scope: no tenant-shaped identifiers or out-of-scope content found")
+        if not scanned:
+            findings.note(
+                "confidentiality and scope: no changed .md/.json file to scan"
+                + (f" ({len(skipped)} changed file(s) are outside this check: {', '.join(sorted(skipped))})" if skipped else "")
+            )
+        else:
+            findings.note(
+                f"confidentiality and scope: no tenant-shaped identifiers or out-of-scope "
+                f"content found across {len(scanned)} file(s) ({', '.join(sorted(scanned))})"
+                + (f"; {len(skipped)} changed file(s) are outside this check: {', '.join(sorted(skipped))}" if skipped else "")
+            )
 
 
 def check_escalation_direction(base_ref: str | None, findings: Findings, bot: bool) -> None:
@@ -658,19 +760,35 @@ def check_escalation_direction(base_ref: str | None, findings: Findings, bot: bo
         findings.note("escalation direction: skipped (matrix not present at base ref)")
         return
 
-    def labels_by_row(text: str) -> dict[str, list[str]]:
+    def labels_by_row(text: str, side: str) -> dict[str, list[str]] | None:
+        """None means the Status column could not be resolved on this side.
+
+        Returning an empty dict instead made this check fail *open*: with no
+        Status index the loop below finds no violations and the run reports
+        "no row moved out of 'Requires further validation'". That is the
+        repository's hardest safety control asserting a clean result over a
+        comparison it never performed, and a single reworded header cell was
+        enough to do it.
+        """
         indexes = column_indexes(text)
         status_index = indexes.get("Status")
-        result: dict[str, list[str]] = {}
         if status_index is None:
-            return result
+            findings.error(
+                "escalation direction",
+                f"could not resolve the 'Status' column in the {side} matrix, so no label "
+                "comparison was made. This check cannot be reported as clean.",
+            )
+            return None
+        result: dict[str, list[str]] = {}
         for row in matrix_table_rows(text):
             if len(row) > status_index:
                 result[row[0]] = normalise_label(row[status_index])
         return result
 
-    old = labels_by_row(before)
-    new = labels_by_row(MATRIX.read_text(encoding="utf-8"))
+    old = labels_by_row(before, f"base ({base_ref})")
+    new = labels_by_row(MATRIX.read_text(encoding="utf-8"), "working-tree")
+    if old is None or new is None:
+        return
     violations = 0
     for row_id, old_labels in old.items():
         if "Requires further validation" in old_labels:
