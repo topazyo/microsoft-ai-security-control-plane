@@ -117,11 +117,18 @@ jobs:
 
             Evidence bundle: evidence/evidence.json
             Sources that could NOT be fetched this run: ${{ steps.watch.outputs.failed_sources }}
+            Sources whose watched signal DEGRADED this run: ${{ steps.watch.outputs.collapsed_filter_sources }} ${{ steps.watch.outputs.coverage_warning_sources }}
 
             Advance a row's last-verified date only where its source was fetched
-            successfully this run. Write exactly one CHANGELOG heading for this
-            calendar month using `scripts/changelog_entry.py`. Open a draft pull
-            request; never merge.
+            successfully this run AND is not listed as degraded above. The second
+            condition is not redundant: a degraded source fetches successfully
+            while watching less than the registry claims, so "fetched
+            successfully" alone would authorise advancing a date on a signal that
+            has gone blind. Record any degraded source in the CHANGELOG entry
+            rather than letting the new baseline absorb it silently.
+
+            Write exactly one CHANGELOG heading for this calendar month using
+            `scripts/changelog_entry.py`. Open a draft pull request; never merge.
 
       - name: Validate the proposed refresh
         if: steps.creds.outputs.present == 'true'
@@ -160,7 +167,8 @@ jobs:
 
           **What to do:** follow *Running tiers D2 and D3 locally* in
           `docs/agent-cadence.md`. Advance a last-verified date only where the source
-          was fetched successfully, and write exactly one CHANGELOG heading for this
+          was fetched successfully **and** is not listed under *Coverage loss in the
+          watched signal* above, and write exactly one CHANGELOG heading for this
           calendar month.
           SUMMARY
           } >> "${GITHUB_STEP_SUMMARY}"

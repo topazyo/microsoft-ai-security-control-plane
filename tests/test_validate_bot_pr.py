@@ -121,6 +121,45 @@ class ColumnContractTests(unittest.TestCase):
         findings = self.check_matrix_against(self.matrix(reworded))
         self.assertEqual([n for n in findings.notes if "status labels" in n], [])
 
+    def test_a_missing_header_does_not_mask_the_other_checks(self):
+        """One fault must not hide another.
+
+        An early return here would mean a header rename plus a genuinely
+        missing ISO date surface as a single error: the maintainer repairs the
+        header, re-runs, and only then learns about the date. That is the same
+        masking `orphan_claims` is reported above its own early return to avoid.
+        """
+        reworded = self.HEADER.replace("Status", "Status (label)")
+        undated = self.ROW.replace("2026-09-01", "sometime")
+        findings = self.check_matrix_against(
+            "\n".join([reworded, self.DIVIDER, undated, ""])
+        )
+        self.assertTrue(
+            any("header column 'Status' not found" in e for e in findings.errors),
+            findings.errors,
+        )
+        self.assertTrue(
+            any("no ISO date in 'Last verified'" in e for e in findings.errors),
+            findings.errors,
+        )
+
+    def test_an_unresolved_column_is_reported_once_not_twice(self):
+        """A missing header is one fault, not a header error plus a count error."""
+        reworded = self.HEADER.replace("Status", "Status (label)")
+        findings = self.check_matrix_against(self.matrix(reworded))
+        self.assertEqual(
+            [e for e in findings.errors if "have a 'Status' cell to check" in e], []
+        )
+
+    def test_the_checks_that_did_run_still_report(self):
+        """A disabled check must not silence the ones that worked."""
+        reworded = self.HEADER.replace("Status", "Status (label)")
+        findings = self.check_matrix_against(self.matrix(reworded))
+        self.assertTrue(
+            any("last-verified dates: all 1 row(s)" in n for n in findings.notes),
+            findings.notes,
+        )
+
     def test_a_row_too_short_to_carry_a_column_is_reported(self):
         text = "\n".join([self.HEADER, self.DIVIDER, self.ROW, "| 2 | Short |", ""])
         findings = self.check_matrix_against(text)
@@ -147,8 +186,52 @@ class ConfidentialityScopeTests(unittest.TestCase):
     def test_a_python_only_change_does_not_claim_a_clean_scan(self):
         findings = self.scan(["scripts/validate_bot_pr.py"])
         note = " ".join(findings.notes)
-        self.assertIn("no changed .md/.json file to scan", note)
+        self.assertIn("no changed file this check can read", note)
         self.assertNotIn("no tenant-shaped identifiers or out-of-scope content found", note)
+
+    def test_the_tracked_agent_configuration_is_scanned(self):
+        """`.claude/**` is in the workflow's path filters, so it must be read.
+
+        A hooks-only pull request otherwise produced a green `Validate matrix`
+        that had read nothing — a present-but-vacuous check, which reads as
+        validation the same way an absent one reads as green.
+        """
+        findings = self.scan(
+            [".claude/hooks/instructions-loaded-log.ps1", ".claude/agents/status-adjudicator.md"]
+        )
+        note = " ".join(findings.notes)
+        self.assertIn("across 2 file(s)", note)
+        self.assertIn(".claude/hooks/instructions-loaded-log.ps1", note)
+
+    def test_a_workflow_change_is_scanned(self):
+        findings = self.scan([".github/workflows/stale-guard.yml"])
+        self.assertIn("across 1 file(s)", " ".join(findings.notes))
+
+    def test_a_deleted_file_is_counted_rather_than_dropped(self):
+        """Every changed file lands in exactly one bucket.
+
+        A path that is scannable but no longer exists — a deletion, or the old
+        side of a rename — used to fall through with no bookkeeping, so
+        `scanned + skipped` silently understated the diff and the note could
+        claim there was nothing to scan.
+        """
+        findings = self.scan(["docs/a-file-that-was-deleted.md"])
+        note = " ".join(findings.notes)
+        self.assertIn("no longer exist and were not read", note)
+        self.assertIn("docs/a-file-that-was-deleted.md", note)
+
+    def test_the_no_diff_fallback_reads_the_machine_written_state(self):
+        """With no diff this list is the whole scan.
+
+        `fingerprints.json` is machine-written and holds text taken verbatim
+        from upstream pages, so it is the file most worth scanning — and on a
+        push whose base ref resolves to the pushed commit, the fallback is all
+        that runs.
+        """
+        findings = self.scan([])
+        note = " ".join(findings.notes)
+        self.assertIn(".github/watch-state/fingerprints.json", note)
+        self.assertIn(".github/watch-state/sources.json", note)
 
     def test_a_markdown_change_names_the_files_it_read(self):
         findings = self.scan(["docs/agent-cadence.md"])
@@ -478,6 +561,65 @@ class DocumentedTestCommandTests(unittest.TestCase):
     def test_the_documented_command_does_not_use_an_unimportable_top_level(self):
         """`-t .` is the exact spelling that shipped broken. Pin it."""
         self.assertNotIn("-t .", self.documented_command())
+
+
+class PathFilterTests(unittest.TestCase):
+    """The two trigger lists in validate-matrix.yml must stay identical.
+
+    They were not: `.github/watch-state/**` sat in the `pull_request` list and
+    was missing from the `push` list, so a class of push to main ran no
+    validation at all. The remedy for that was a comment saying the lists must
+    match -- which is the same unguarded-prose failure the drift itself was, one
+    level up. The next entry added to one list and not the other reproduces the
+    silent skip, and an absent check reads as a green one.
+    """
+
+    WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate-matrix.yml"
+
+    def paths_for(self, event: str) -> list[str]:
+        """The `paths:` list under `on.<event>`, read as text.
+
+        Text rather than a YAML parser because the suite is stdlib-only, and
+        the same precedent is already set by DocumentedTestCommandTests.
+        """
+        lines = self.WORKFLOW.read_text(encoding="utf-8").splitlines()
+        start = next(
+            (i for i, l in enumerate(lines) if l.strip() == f"{event}:"), None
+        )
+        self.assertIsNotNone(start, f"no `{event}:` trigger in {self.WORKFLOW.name}")
+        collected: list[str] = []
+        in_paths = False
+        for line in lines[start + 1 :]:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == "paths:":
+                in_paths = True
+                continue
+            if in_paths:
+                if stripped.startswith("- "):
+                    collected.append(stripped[2:].strip().strip("'\""))
+                    continue
+                break
+            if not line.startswith(" " * 2) or stripped.endswith(":") and not line.startswith(" " * 4):
+                break
+        self.assertTrue(collected, f"no paths parsed for `{event}`")
+        return collected
+
+    def test_the_two_trigger_lists_are_identical(self):
+        self.assertEqual(self.paths_for("pull_request"), self.paths_for("push"))
+
+    def test_both_lists_cover_the_machine_written_state(self):
+        """The specific entry whose absence caused the original silent skip."""
+        for event in ("pull_request", "push"):
+            with self.subTest(event=event):
+                self.assertIn(".github/watch-state/**", self.paths_for(event))
+
+    def test_both_lists_cover_the_tracked_agent_configuration(self):
+        """`.claude/**` holds executable influence surfaces and is tracked."""
+        for event in ("pull_request", "push"):
+            with self.subTest(event=event):
+                self.assertIn(".claude/**", self.paths_for(event))
 
 
 class ContributorInstructionTests(unittest.TestCase):

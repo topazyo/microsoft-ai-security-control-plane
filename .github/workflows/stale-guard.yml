@@ -46,8 +46,18 @@ jobs:
         shell: bash
         run: python3 scripts/stale_guard.py | tee staleness.txt
 
-      # Fail closed on the output too. `== 'true'` treated an ABSENT output as
-      # "not stale", which is the one value it must never be read as.
+      # Fail closed on the output, and read the scope precisely rather than
+      # claiming more than this buys. `== 'true'` treated an ABSENT output as
+      # "not stale", which is the one value it must never be read as. `!= 'false'`
+      # covers an output that is absent *while the step succeeded* -- a future
+      # refactor that stops emitting it, or a runner with no GITHUB_OUTPUT.
+      #
+      # It does NOT file the issue when the guard crashes, and that is correct
+      # rather than a gap: a step `if` containing no status-check function is
+      # implicitly ANDed with `success()`, so a failed Evaluate step skips this
+      # one whatever the comparison says. The crash signal is the red run that
+      # `shell: bash` above now produces -- and filing an issue from a crashed
+      # run would paste a truncated or empty report into it.
       - name: Open or update the staleness issue
         if: steps.stale.outputs.stale != 'false'
         env:

@@ -108,10 +108,18 @@ jobs:
       - name: Run the automation tests
         run: python3 -m unittest discover -s tests -v
 
+      # On a pull request the base is the target branch. On a push it must be the
+      # commit before the push, NOT `origin/main`: after checkout of a push to
+      # main, `origin/main` IS the pushed commit, so `git diff origin/main...HEAD`
+      # is empty and every diff-derived check no-ops -- the path allowlist checks
+      # nothing and the confidentiality scan falls back to its four fixed content
+      # files. Adding a path filter alone therefore did not get a changed
+      # `fingerprints.json` scanned on a push; it only made the repo-state checks
+      # run. `github.event.before` is what makes the diff real.
       - name: Validate matrix, sourcing and escalation direction
         run: |
           python3 scripts/validate_bot_pr.py \
-            --base-ref "origin/${{ github.event.pull_request.base.ref || 'main' }}"
+            --base-ref "${{ github.event.pull_request.base.ref && format('origin/{0}', github.event.pull_request.base.ref) || github.event.before }}"
 
       - name: Report staleness (informational)
         run: |

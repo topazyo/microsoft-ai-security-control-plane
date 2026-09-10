@@ -98,6 +98,15 @@ CONFIDENTIALITY_PATTERNS = [
     ("onmicrosoft.com tenant", re.compile(r"\b[\w-]+\.onmicrosoft\.com\b", re.IGNORECASE)),
 ]
 
+# Suffixes `check_confidentiality` reads. `.ps1` and `.yml` were added when
+# `.claude/**` entered the workflow's path filters: the tracked PowerShell hooks
+# and the workflow definitions are executable influence surfaces, and a
+# hooks-only pull request otherwise produced a green `Validate matrix` that had
+# read nothing at all — a present-but-vacuous check, which reads as validation
+# exactly the way an absent one reads as green. The patterns below are
+# content-agnostic, so widening the set costs nothing but coverage.
+SCANNED_SUFFIXES = {".md", ".json", ".ps1", ".yml"}
+
 # Out-of-scope content markers per the README's out-of-scope list.
 OUT_OF_SCOPE_PATTERNS = [
     ("KQL/detection content", re.compile(r"```\s*(kql|kusto)\b", re.IGNORECASE)),
@@ -250,8 +259,14 @@ def check_matrix(findings: Findings, text: str | None = None) -> None:
             f"on it did not run. Header cells read {sorted(indexes)}; the keys are matched "
             "exactly, so a reworded column must be renamed here too.",
         )
-    if missing:
-        return
+    # Deliberately no early return here. A missing header disables only the
+    # checks keyed on *that* header; the others still run. Returning would mask
+    # them, so a header rename plus a genuinely missing ISO date would surface
+    # as one error, be repaired, and only then reveal the second -- the same
+    # masking that `orphan_claims` is reported above its own early return to
+    # avoid. Nothing is at risk of reading as a pass: each missing header is
+    # already an error, and each note below additionally requires that its
+    # column resolved and that every row was examined.
 
     label_failures = 0
     date_failures = 0
@@ -263,7 +278,7 @@ def check_matrix(findings: Findings, text: str | None = None) -> None:
     for row in rows:
         identifier = row[0] if row else "?"
 
-        if len(row) > status_index:
+        if status_index is not None and len(row) > status_index:
             label_checked += 1
             labels = normalise_label(row[status_index])
             asserted = [l for l in labels if l in LEGEND_LABELS]
@@ -279,13 +294,13 @@ def check_matrix(findings: Findings, text: str | None = None) -> None:
                     )
                     label_failures += 1
 
-        if len(row) > verified_index:
+        if verified_index is not None and len(row) > verified_index:
             date_checked += 1
             if not re.search(r"\b20\d{2}-\d{2}-\d{2}\b", row[verified_index]):
                 findings.error("last-verified date", f"row {identifier}: no ISO date in 'Last verified'")
                 date_failures += 1
 
-        if len(row) > source_index:
+        if source_index is not None and len(row) > source_index:
             domain_checked += 1
             urls = URL_PATTERN.findall(row[source_index])
             if not urls:
@@ -304,23 +319,25 @@ def check_matrix(findings: Findings, text: str | None = None) -> None:
     # number of rows found. A row too short to reach a keyed column is a
     # malformed table row, and reporting it as an error rather than skipping it
     # is what stops "all N row(s)" from ever standing over an unexamined row.
-    for name, checked in (
-        ("Status", label_checked),
-        ("Last verified", date_checked),
-        ("Primary source", domain_checked),
+    for name, index, checked in (
+        ("Status", status_index, label_checked),
+        ("Last verified", verified_index, date_checked),
+        ("Primary source", source_index, domain_checked),
     ):
-        if checked != len(rows):
+        # An unresolved column is already reported above; saying "0 of 13 rows
+        # have a cell to check" as well would be a second error for one fault.
+        if index is not None and checked != len(rows):
             findings.error(
                 "matrix",
                 f"only {checked} of {len(rows)} capability row(s) have a '{name}' cell to "
                 "check; the rest are too short to reach that column.",
             )
 
-    if not label_failures and label_checked == len(rows):
+    if not label_failures and status_index is not None and label_checked == len(rows):
         findings.note(f"status labels: all {label_checked} row(s) use legend labels only")
-    if not date_failures and date_checked == len(rows):
+    if not date_failures and verified_index is not None and date_checked == len(rows):
         findings.note(f"last-verified dates: all {date_checked} row(s) carry an ISO date")
-    if not domain_failures and domain_checked == len(rows):
+    if not domain_failures and source_index is not None and domain_checked == len(rows):
         findings.note(
             f"source domains: all {domain_checked} row(s) cite Learn, the public Roadmap or GitHub Docs"
         )
@@ -680,37 +697,53 @@ def check_doc_counts(findings: Findings) -> None:
 
 
 def check_confidentiality(files: list[str], findings: Findings) -> None:
-    """Scan changed `.md`/`.json` files, and report the scope of the scan.
+    """Scan the changed files this check can read, and report the scan's scope.
 
     The note this emits used to be an unscoped absence claim: it skips any file
-    that is not `.md`/`.json`, so a pull request touching only `scripts/` or
+    that is not in `SCANNED_SUFFIXES`, so a pull request touching only `scripts/` or
     `tests/` or `.github/workflows/` scanned nothing and still reported "no
     tenant-shaped identifiers or out-of-scope content found". That is the
     standard this repository applies to its own published absence claims, so it
     applies here: the note names how many files were read, and says plainly
     when the answer is none.
     """
+    # The no-diff fallback carries the two watch-state files deliberately. When
+    # the diff is empty -- a workflow_dispatch run, or a push whose base ref
+    # resolves to the pushed commit -- this list is the entire scan, and
+    # `fingerprints.json` is the file most worth scanning: it is machine-written
+    # and holds text taken verbatim from upstream pages, so it is the one place
+    # third-party content enters the repository without a human reading it.
     targets = [REPO_ROOT / f for f in files] if files else [
         REPO_ROOT / "matrix" / "capability-status-matrix.md",
         REPO_ROOT / "crosswalk" / "framework-crosswalk.md",
         REPO_ROOT / "checklists" / "capability-status-verification.md",
         REPO_ROOT / "CHANGELOG.md",
+        REPO_ROOT / ".github" / "watch-state" / "sources.json",
+        REPO_ROOT / ".github" / "watch-state" / "fingerprints.json",
     ]
     hits = 0
     scanned: list[str] = []
     skipped: list[str] = []
+    missing: list[str] = []
     for path in targets:
-        if not path.exists() or path.suffix not in {".md", ".json"}:
-            if path.suffix not in {".md", ".json"}:
-                # POSIX spelling on every platform, so the note reads the same
-                # locally as in CI and matches the git-derived paths above.
-                skipped.append(
-                    path.relative_to(REPO_ROOT).as_posix()
-                    if path.is_relative_to(REPO_ROOT)
-                    else path.as_posix()
-                )
+        # POSIX spelling on every platform, so the note reads the same locally as
+        # in CI and matches the git-derived paths above.
+        relative = (
+            path.relative_to(REPO_ROOT).as_posix()
+            if path.is_relative_to(REPO_ROOT)
+            else path.as_posix()
+        )
+        if path.suffix not in SCANNED_SUFFIXES:
+            skipped.append(relative)
             continue
-        scanned.append(path.relative_to(REPO_ROOT).as_posix())
+        if not path.exists():
+            # A changed file that no longer exists -- a deletion, or the old side
+            # of a rename. Counted rather than dropped: the note is a scoped
+            # absence claim, so every changed file must land in exactly one
+            # bucket or `scanned + skipped` silently understates the diff.
+            missing.append(relative)
+            continue
+        scanned.append(relative)
         text = path.read_text(encoding="utf-8")
         for name, pattern in CONFIDENTIALITY_PATTERNS:
             for match in pattern.findall(text):
@@ -725,16 +758,26 @@ def check_confidentiality(files: list[str], findings: Findings) -> None:
                 findings.error("scope", f"{path.relative_to(REPO_ROOT)}: contains {name}, which is out of scope")
                 hits += 1
     if not hits:
+        unread = ""
+        if skipped:
+            unread += (
+                f"; {len(skipped)} changed file(s) are outside this check: "
+                f"{', '.join(sorted(skipped))}"
+            )
+        if missing:
+            unread += (
+                f"; {len(missing)} changed scannable file(s) no longer exist and were "
+                f"not read: {', '.join(sorted(missing))}"
+            )
         if not scanned:
             findings.note(
-                "confidentiality and scope: no changed .md/.json file to scan"
-                + (f" ({len(skipped)} changed file(s) are outside this check: {', '.join(sorted(skipped))})" if skipped else "")
+                "confidentiality and scope: no changed file this check can read" + unread
             )
         else:
             findings.note(
-                f"confidentiality and scope: no tenant-shaped identifiers or out-of-scope "
+                "confidentiality and scope: no tenant-shaped identifiers or out-of-scope "
                 f"content found across {len(scanned)} file(s) ({', '.join(sorted(scanned))})"
-                + (f"; {len(skipped)} changed file(s) are outside this check: {', '.join(sorted(skipped))}" if skipped else "")
+                + unread
             )
 
 

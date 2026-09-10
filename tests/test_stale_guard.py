@@ -48,8 +48,10 @@ What these tests do NOT cover, stated rather than implied:
     keeps the repository out of that state; it does not make the guard survive
     it. The crash is at least loud now: `stale-guard.yml` names `shell: bash`,
     which selects `-eo pipefail`, so the failure is no longer swallowed by the
-    `| tee` pipeline, and the issue step gates on `!= 'false'` so an absent
-    output does not read as "nothing is stale".
+    `| tee` pipeline and the weekly run goes red. The issue step is skipped in
+    that case, behind the `success()` that GitHub implicitly ANDs into a step
+    `if`; its `!= 'false'` gate covers the narrower case of an output that is
+    absent while the step succeeded.
   - GitHub's own consumption of the heredoc form. These tests assert only that
     the script writes it, and not the case where a value contains the literal
     `__EOF__` delimiter (no tracked content can produce one today).
@@ -574,10 +576,18 @@ class WorkflowOutputContractTests(GuardRunner):
     def test_the_gate_fails_closed_on_an_absent_output(self):
         """An absent output must not read as "not stale".
 
-        If stale_guard.py crashes the step writes no `stale` value at all, and
-        a GitHub Actions expression compares the empty string. `== 'true'` reads
-        that as "nothing is stale" and skips the issue -- the crash becomes a
-        green weekly run with no signal. `!= 'false'` files the issue instead.
+        Scoped to what the comparison actually buys, because the obvious
+        stronger claim is false. `!= 'false'` covers an output that is absent
+        *while the step succeeded* -- a refactor that stops emitting it, or a
+        runner with no GITHUB_OUTPUT -- where `== 'true'` would have read the
+        empty string as "nothing is stale" and skipped the issue.
+
+        It does not cover the crash case, and no comparison here could: a step
+        `if` containing no status-check function is implicitly ANDed with
+        `success()`, so a failed Evaluate step skips the issue step whatever
+        this says. The crash signal is the red run that `shell: bash` produces
+        via pipefail, which is the right signal anyway -- an issue filed from a
+        crashed run would paste a truncated report into it.
         """
         operator, literal = self.GATE.search(
             self.WORKFLOW.read_text(encoding="utf-8")
@@ -639,9 +649,11 @@ class LiveTrackedFileTests(GuardRunner):
     def test_every_parsed_date_is_a_real_calendar_date(self):
         """ISO_DATE accepts 2026-13-45; main() would then raise ValueError.
 
-        In stale-guard.yml that crash is piped into `tee`, so the job stays green
-        with no `stale` output and no issue opened. This test keeps the
-        repository out of that state; it does not make the guard survive it.
+        That crash now fails the `Evaluate staleness` step -- `stale-guard.yml`
+        names `shell: bash`, so pipefail stops `tee` from reporting 0 -- and the
+        issue step is skipped behind the implicit `success()`. So the signal is
+        a red weekly run, not an opened issue. This test keeps the repository
+        out of that state to begin with; it does not make the guard survive it.
         """
         for path, identifier, iso in self.live_iso_entries():
             with self.subTest(file=path, item=identifier):

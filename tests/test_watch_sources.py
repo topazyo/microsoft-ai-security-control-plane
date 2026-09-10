@@ -976,6 +976,32 @@ class CoverageSignalWiringTests(unittest.TestCase):
     WORKFLOWS = REPO_ROOT / ".github" / "workflows"
     EMITTED = ("collapsed_filter_sources", "coverage_warning_sources")
 
+    @staticmethod
+    def executable_yaml(text: str) -> str:
+        """The workflow with comment lines removed.
+
+        Asserting over the raw file was vacuous: the step that consumes these
+        keys is introduced by a comment naming both of them, so deleting the
+        whole step and leaving the comment kept every assertion green. A test
+        satisfied by the prose explaining the fix is the exact defect class this
+        class exists to catch, so the comments come out first.
+
+        Line-level, not token-level: a `#` inside a quoted string would survive,
+        which is the safe direction here -- no `run:` line in these workflows
+        carries one.
+        """
+        return "\n".join(
+            line for line in text.splitlines() if not line.strip().startswith("#")
+        )
+
+    def consuming_expressions(self, text: str, key: str) -> list[str]:
+        """Lines that actually reference the key as a step output."""
+        return [
+            line
+            for line in self.executable_yaml(text).splitlines()
+            if f"steps.watch.outputs.{key}" in line
+        ]
+
     def emitted_keys(self) -> set[str]:
         """The keys watch_sources.py actually hands to GITHUB_OUTPUT.
 
@@ -1002,22 +1028,113 @@ class CoverageSignalWiringTests(unittest.TestCase):
         text = (self.WORKFLOWS / "source-watch.yml").read_text(encoding="utf-8")
         for key in self.EMITTED:
             with self.subTest(key=key):
-                self.assertIn(key, text)
+                # Two references, not one: the step's `if:` decides whether it
+                # runs and its `env:` carries the value into the body. A key
+                # named in only one of those is half-wired.
+                self.assertGreaterEqual(len(self.consuming_expressions(text, key)), 2)
 
     def test_both_coverage_keys_are_consumed_by_the_monthly_refresh(self):
         """It matters most here: this job runs --update-baseline."""
         text = (self.WORKFLOWS / "monthly-refresh.yml").read_text(encoding="utf-8")
         for key in self.EMITTED:
             with self.subTest(key=key):
-                self.assertIn(key, text)
+                self.assertGreaterEqual(len(self.consuming_expressions(text, key)), 2)
 
     def test_every_emitted_key_is_consumed_somewhere(self):
         """The general rule, so a future key cannot be added and left unread."""
-        consumed = "".join(
-            path.read_text(encoding="utf-8") for path in sorted(self.WORKFLOWS.glob("*.yml"))
+        consumed = "\n".join(
+            self.executable_yaml(path.read_text(encoding="utf-8"))
+            for path in sorted(self.WORKFLOWS.glob("*.yml"))
         )
-        unread = sorted(key for key in self.emitted_keys() if key not in consumed)
+        unread = sorted(
+            key for key in self.emitted_keys() if f"outputs.{key}" not in consumed
+        )
         self.assertEqual(unread, [])
+
+    def test_the_comment_stripper_does_not_swallow_the_step_bodies(self):
+        """Guard the guard: over-stripping would make every assertion vacuous.
+
+        If `executable_yaml` returned nothing useful, the assertions above would
+        fail rather than pass -- but `test_every_emitted_key_is_consumed_somewhere`
+        would pass over an empty `unread`, so the stripper's output is pinned
+        directly.
+        """
+        text = (self.WORKFLOWS / "source-watch.yml").read_text(encoding="utf-8")
+        stripped = self.executable_yaml(text)
+        self.assertIn("- name: Report coverage loss in the watched signal", stripped)
+        self.assertNotIn("# The other loss class", stripped)
+
+    def test_every_piped_run_step_names_the_shell(self):
+        """A pipe without `shell: bash` reports the LAST command's status.
+
+        GitHub runs a `run:` block as `bash -e {0}` with no pipefail, so
+        `python3 x.py | tee log` reports `tee`'s status -- always 0. The
+        watcher is not exit-0-unconditional: a structurally broken registry
+        returns 1 before `emit_github_output` runs, so the step would stay green
+        with every output absent and every downstream gate skipped.
+        """
+        checked = 0
+        for path in sorted(self.WORKFLOWS.glob("*.yml")):
+            for name, block in self.step_blocks(path):
+                if not self.pipes_in_run_body(block):
+                    continue
+                checked += 1
+                with self.subTest(workflow=path.name, step=name):
+                    self.assertIn(
+                        "shell: bash",
+                        block,
+                        f"{path.name}: step '{name}' pipes without naming the shell",
+                    )
+        # A detector that matches nothing would pass this test over every
+        # workflow. The first version did exactly that -- it only inspected the
+        # line introducing `run:`, so a pipe on a continuation line was invisible
+        # and removing `shell: bash` did not redden the suite.
+        self.assertGreaterEqual(checked, 3, "the piped-step detector matched nothing")
+
+    @staticmethod
+    def _is_pipe(line: str) -> bool:
+        """A shell pipe, as opposed to `||`, a YAML block scalar, or a table."""
+        body = line.strip()
+        if body in {"run: |", "run: |-", "run: |+"}:
+            return False
+        return "|" in body.replace("||", "")
+
+    def step_blocks(self, path: Path) -> list[tuple[str, str]]:
+        """(step name, full step text) for each `- name:` block in a workflow."""
+        lines = self.executable_yaml(path.read_text(encoding="utf-8")).splitlines()
+        starts = [i for i, l in enumerate(lines) if l.lstrip().startswith("- name:")]
+        blocks = []
+        for position, start in enumerate(starts):
+            end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+            name = lines[start].split("- name:", 1)[1].strip()
+            blocks.append((name, "\n".join(lines[start:end])))
+        return blocks
+
+    def pipes_in_run_body(self, block: str) -> bool:
+        """True if the step's `run:` body contains a shell pipe.
+
+        Scans every line of the body, not just the one introducing `run:` --
+        `python3 x.py \\` / `  | tee log` puts the pipe on a continuation line,
+        which is precisely how the real defect was written.
+        """
+        lines = block.splitlines()
+        in_run = False
+        run_indent = 0
+        for line in lines:
+            stripped = line.strip()
+            if not in_run:
+                if stripped.startswith("run:"):
+                    if self._is_pipe(line) and "${{" not in line:
+                        return True
+                    in_run = stripped in {"run: |", "run: |-", "run: |+"}
+                    run_indent = len(line) - len(line.lstrip())
+                continue
+            if stripped and (len(line) - len(line.lstrip())) <= run_indent:
+                in_run = False
+                continue
+            if self._is_pipe(line) and "${{" not in line:
+                return True
+        return False
 
 
 class CommittedBaselineInvariantTests(unittest.TestCase):
