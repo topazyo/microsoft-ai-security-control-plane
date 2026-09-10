@@ -408,7 +408,7 @@ and update both workflows together.
 ## Operating the cadence
 
 ```bash
-python3 -m unittest discover -s tests                  # signal-scoping and registry tests
+python3 -m unittest discover -s tests                  # signal-scoping, registry, gate and staleness tests
 python3 scripts/watch_sources.py                       # detect changes (read-only)
 python3 scripts/watch_sources.py --update-baseline     # accept the current state as the baseline
 python3 scripts/stale_guard.py                         # list rows past the staleness window
@@ -422,6 +422,25 @@ report line looked plausible, and only re-deriving the heading counts by hand
 exposed it. `tests/test_watch_sources.py` therefore includes the case that would
 have caught it — a fixture whose only change is an out-of-scope retirement notice,
 asserted to produce **no** reported change.
+
+Every module in `tests/` earns its place the same way, by covering something that
+failed quietly rather than loudly:
+
+- `tests/test_watch_sources.py` — signal extraction and scoping, registry shape,
+  network-free invariants over the committed baseline (a re-baseline is
+  otherwise self-confirming), and that every coverage-loss key the watcher emits
+  is consumed by some workflow.
+- `tests/test_validate_bot_pr.py` — the gates themselves, including the two
+  directions of registry coverage and the cases where a check used to report a
+  pass over rows it never examined.
+- `tests/test_stale_guard.py` — the staleness arithmetic, whose boundary is a
+  strict `age > window` so an item exactly at the window is fresh, and the
+  step-output contract `stale-guard.yml` compares against a literal.
+
+A test that asserts how many items are stale today would rot on the next
+re-verification, so the staleness tests use synthetic fixtures with an explicit
+`--today` for every behavioural assertion and reserve the committed files for
+properties that survive a re-read.
 
 ## Running tiers D2 and D3 locally
 
