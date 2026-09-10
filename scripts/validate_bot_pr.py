@@ -24,6 +24,17 @@ Checks
 7. escalation direction  — a row may never be moved *out* of "Requires further
                            validation" by automation; that transition requires
                            in-tenant confirmation by a human.
+8. source coverage       — every matrix row is claimed by at least one registry
+                           entry, watched or human-only. Without this a new row
+                           can ship with no source of any kind, and the staleness
+                           output cannot be read correctly: which rows no agent
+                           run can ever advance stops being derivable.
+9. documented counts     — the sizes docs/agent-cadence.md asserts in prose are
+                           re-derived from the registry and the matrix. The doc
+                           already carried an instruction to re-derive its own
+                           count rather than trust the sentence; the instruction
+                           worked and the number drifted anyway, twice. A count
+                           in prose is a claim, and claims here are checked.
 
 Exit code 0 = all checks pass. Non-zero = at least one violation.
 """
@@ -39,6 +50,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MATRIX = REPO_ROOT / "matrix" / "capability-status-matrix.md"
+REGISTRY = REPO_ROOT / ".github" / "watch-state" / "sources.json"
+CADENCE_DOC = REPO_ROOT / "docs" / "agent-cadence.md"
 
 LEGEND_LABELS = {
     "GA",
@@ -310,6 +323,161 @@ def check_citation_containment(evidence_path: Path | None, findings: Findings) -
         )
 
 
+def matrix_row_ids(text: str) -> list[int]:
+    """Numeric row identifiers from the capability table's first column."""
+    ids: list[int] = []
+    for row in matrix_table_rows(text):
+        cell = re.sub(r"[^0-9]", "", row[0]) if row else ""
+        if cell:
+            ids.append(int(cell))
+    return ids
+
+
+def load_registry(findings: Findings) -> dict | None:
+    if not REGISTRY.exists():
+        findings.error("source coverage", f"{REGISTRY.name} not found")
+        return None
+    try:
+        return json.loads(REGISTRY.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        findings.error("source coverage", f"{REGISTRY.name} is not valid JSON: {exc}")
+        return None
+
+
+def claimed_rows(entries: list[dict]) -> set[int]:
+    return {row for entry in entries for row in entry.get("matrix_rows", []) if isinstance(row, int)}
+
+
+def claimed_crosswalk_rows(entries: list[dict]) -> set[str]:
+    return {row for entry in entries for row in entry.get("crosswalk_rows", []) if isinstance(row, str)}
+
+
+def check_source_coverage(findings: Findings) -> None:
+    """Every matrix row must be claimed by some registry entry.
+
+    `registry_problems` in scripts/watch_sources.py checks that each entry
+    declares what it backs; this checks the converse, which needs the matrix and
+    so cannot live there. The converse is the half that matters operationally: a
+    row nothing claims is a row the cadence silently does not cover, and rows 12
+    and 13 sat in exactly that state through a full release because coverage was
+    asserted in prose ("covering every matrix row") instead of tested.
+
+    The human-only residue is reported as a note on every run, not just when it
+    breaks. That set is the invariant needed to read `stale_guard.py` output
+    correctly — those rows can never be advanced by any agent run, so their
+    staleness means "a human is overdue", not "the automation is failing".
+    """
+    registry = load_registry(findings)
+    if registry is None:
+        return
+    if not MATRIX.exists():
+        findings.error("source coverage", f"{MATRIX} not found")
+        return
+    rows = matrix_row_ids(MATRIX.read_text(encoding="utf-8"))
+    if not rows:
+        findings.error("source coverage", "could not read any row identifier from the capability table")
+        return
+
+    watched = registry.get("sources", [])
+    human_only = registry.get("human_only_sources", [])
+    watched_rows = claimed_rows(watched)
+    human_rows = claimed_rows(human_only)
+
+    uncovered = [row for row in rows if row not in watched_rows | human_rows]
+    for row in uncovered:
+        findings.error(
+            "source coverage",
+            f"matrix row {row} is claimed by no entry in {REGISTRY.name}. Add the row to "
+            "'matrix_rows' on the source that backs it, or to a 'human_only_sources' entry "
+            "if no automation may fetch it.",
+        )
+    if uncovered:
+        return
+
+    human_exclusive = sorted(row for row in rows if row in human_rows and row not in watched_rows)
+    crosswalk_exclusive = sorted(
+        claimed_crosswalk_rows(human_only) - claimed_crosswalk_rows(watched)
+    )
+    findings.note(
+        f"source coverage: all {len(rows)} matrix row(s) claimed by a registry entry"
+    )
+    findings.note(
+        "source coverage: "
+        f"{len(human_exclusive) + len(crosswalk_exclusive)} dated item(s) are backed ONLY by "
+        f"human-only sources and can never be advanced by an agent run — matrix row(s) "
+        f"{human_exclusive or 'none'}, cross-walk row(s) {crosswalk_exclusive or 'none'}"
+    )
+
+
+# Counts docs/agent-cadence.md states in prose, each with the way to re-derive
+# it. Written as digits inside bold markers so the claim is machine-locatable:
+# the previous form spelled them in words ("fifteen pinned sources") and drifted
+# to a figure 7 short while carrying its own instruction to re-derive it.
+DOC_COUNT_CLAIMS = [
+    ("watched sources", re.compile(r"\*\*(\d+) watched sources\*\*")),
+    ("human-only sources", re.compile(r"\*\*(\d+) human-only sources\*\*")),
+    ("matrix rows", re.compile(r"\*\*(\d+) matrix rows\*\*")),
+    ("human-only-backed dated items", re.compile(r"\*\*(\d+) of the dated items\*\*")),
+]
+
+
+def check_doc_counts(findings: Findings) -> None:
+    """Re-derive every count docs/agent-cadence.md asserts.
+
+    A missing claim is a failure, not a pass. Deleting the sentence would
+    otherwise disable the check silently, which is the same trap the workflow
+    path filters carry: an absent check reads as a green one.
+    """
+    registry = load_registry(findings)
+    if registry is None or not CADENCE_DOC.exists():
+        if registry is not None:
+            findings.error("documented counts", f"{CADENCE_DOC} not found")
+        return
+    if not MATRIX.exists():
+        findings.error("documented counts", f"{MATRIX} not found")
+        return
+
+    watched = registry.get("sources", [])
+    human_only = registry.get("human_only_sources", [])
+    rows = matrix_row_ids(MATRIX.read_text(encoding="utf-8"))
+    human_exclusive = [r for r in rows if r in claimed_rows(human_only) and r not in claimed_rows(watched)]
+    crosswalk_exclusive = claimed_crosswalk_rows(human_only) - claimed_crosswalk_rows(watched)
+
+    actual = {
+        "watched sources": len(watched),
+        "human-only sources": len(human_only),
+        "matrix rows": len(rows),
+        "human-only-backed dated items": len(human_exclusive) + len(crosswalk_exclusive),
+    }
+
+    doc = CADENCE_DOC.read_text(encoding="utf-8")
+    failures = 0
+    for name, pattern in DOC_COUNT_CLAIMS:
+        found = pattern.findall(doc)
+        if not found:
+            findings.error(
+                "documented counts",
+                f"docs/agent-cadence.md states no '{name}' count in the checked form "
+                f"({pattern.pattern}). The count is derived in CI, so the sentence may be "
+                "reworded but not removed.",
+            )
+            failures += 1
+            continue
+        for stated in found:
+            if int(stated) != actual[name]:
+                findings.error(
+                    "documented counts",
+                    f"docs/agent-cadence.md says {stated} {name}; re-derived from the "
+                    f"repository it is {actual[name]}.",
+                )
+                failures += 1
+    if not failures:
+        findings.note(
+            "documented counts: docs/agent-cadence.md matches the repository — "
+            + ", ".join(f"{value} {name}" for name, value in actual.items())
+        )
+
+
 def check_confidentiality(files: list[str], findings: Findings) -> None:
     targets = [REPO_ROOT / f for f in files] if files else [
         REPO_ROOT / "matrix" / "capability-status-matrix.md",
@@ -412,6 +580,8 @@ def main() -> int:
 
     check_paths(files, findings, args.bot)
     check_matrix(findings)
+    check_source_coverage(findings)
+    check_doc_counts(findings)
     check_citation_containment(args.evidence, findings)
     check_confidentiality(files, findings)
     check_escalation_direction(args.base_ref, findings, args.bot)

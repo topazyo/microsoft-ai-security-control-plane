@@ -17,6 +17,17 @@ Design notes
   the raw page. Rendered Microsoft Learn pages carry navigation, feedback
   widgets and per-render tokens that change constantly; fingerprinting the whole
   page would produce a false positive nearly every run.
+* Every signal field is computed at the *same scope*. Where a source declares a
+  `relevance_filter`, that scope is the filtered sections and nothing else. An
+  earlier version filtered the heading fields but took the phrase field over the
+  whole page, so a Defender for SQL retirement notice - a section the filter
+  correctly rejected - moved the fingerprint and escalated for five consecutive
+  days. A mixed-scope fingerprint is worse than an unfiltered one, because the
+  report line looks scoped and is not.
+* A relevance filter that matches no heading is announced as a `[warn]` and
+  listed in the evidence bundle's `collapsed_filter_sources`. It is not a
+  failure and not a change -- it is a source that fetches cleanly while watching
+  almost nothing, which every later run reports as "unchanged".
 * Failure isolation: each source is fetched independently. A source that cannot
   be fetched is recorded with ok=false, is never reported as changed, and never
   overwrites its stored baseline. Absence of evidence must never look like a
@@ -73,6 +84,11 @@ STATUS_PHRASES = [
 
 PREVIEW_QUALIFIER = re.compile(r"\(preview\)", re.IGNORECASE)
 
+# Heading levels at or below this are treated as page-level rather than as a
+# product entry, so a relevance filter never scopes them out. See
+# relevance_scoped_text for why they must not confer scope on their children.
+PAGE_LEVEL = 1
+
 # Shape guard for `mode: "version"` captures. Whatever a framework publishes ends
 # up stored verbatim in fingerprints.json and in the evidence bundle the
 # adjudicator reads, so what may leave a fetch is bounded rather than trusted.
@@ -111,28 +127,57 @@ def strip_html(document: str) -> str:
     return html.unescape(body)
 
 
-def html_headings(document: str) -> list[str]:
+# A *section* is (heading_level, heading_or_None, body_text). A section's body
+# includes its own heading, and the text before the first heading is carried as a
+# level-0 section with heading None. Sections exist so that a relevance filter can
+# scope the page *text* as well as the heading list -- see relevance_scoped_text.
+HTML_HEADING = re.compile(r"<h([1-4])\b[^>]*>(.*?)</h\1>", re.DOTALL | re.IGNORECASE)
+MARKDOWN_HEADING = re.compile(r"^\s{0,3}(#{1,4})\s+(.*?)\s*#*\s*$")
+
+
+def html_sections(document: str) -> list[tuple[int, str | None, str]]:
     main = re.search(r"<main\b[^>]*>(.*?)</main>", document, re.DOTALL | re.IGNORECASE)
     body = main.group(1) if main else document
-    found = re.findall(r"<h([1-4])\b[^>]*>(.*?)</h\1>", body, re.DOTALL | re.IGNORECASE)
-    headings = []
-    for _level, raw in found:
-        text = html.unescape(re.sub(r"<[^>]+>", "", raw))
-        text = re.sub(r"\s+", " ", text).strip()
-        if text:
-            headings.append(text)
-    return headings
+    sections: list[tuple[int, str | None, str]] = []
+    level = 0
+    heading: str | None = None
+    start = 0
+    for match in HTML_HEADING.finditer(body):
+        sections.append((level, heading, strip_html(body[start : match.start()])))
+        level = int(match.group(1))
+        text = html.unescape(re.sub(r"<[^>]+>", "", match.group(2)))
+        heading = re.sub(r"\s+", " ", text).strip() or None
+        start = match.start()
+    sections.append((level, heading, strip_html(body[start:])))
+    return sections
 
 
-def markdown_headings(document: str) -> list[str]:
-    headings = []
+def markdown_sections(document: str) -> list[tuple[int, str | None, str]]:
+    sections: list[tuple[int, str | None, str]] = []
+    level = 0
+    heading: str | None = None
+    buffer: list[str] = []
     for line in document.splitlines():
-        match = re.match(r"^\s{0,3}(#{1,4})\s+(.*?)\s*#*\s*$", line)
-        if match:
-            text = re.sub(r"\s+", " ", match.group(2)).strip()
-            if text:
-                headings.append(text)
-    return headings
+        match = MARKDOWN_HEADING.match(line)
+        if not match:
+            buffer.append(line)
+            continue
+        sections.append((level, heading, "\n".join(buffer)))
+        level = len(match.group(1))
+        heading = re.sub(r"\s+", " ", match.group(2)).strip() or None
+        buffer = [line]
+    sections.append((level, heading, "\n".join(buffer)))
+    return sections
+
+
+def section_headings(sections: list[tuple[int, str | None, str]]) -> list[str]:
+    """Headings in document order.
+
+    Derived from the sections rather than extracted separately, so the heading
+    list a filter is applied to and the text that filter scopes to cannot
+    disagree about what counts as a heading.
+    """
+    return [heading for _level, heading, _body in sections if heading]
 
 
 def strip_frontmatter(document: str) -> str:
@@ -162,9 +207,73 @@ def apply_relevance_filter(headings: list[str], patterns: list[str] | None) -> l
     return [h for h in headings if any(c.search(h) for c in compiled)]
 
 
-def extract_signals(text: str, headings: list[str], relevance: list[str] | None = None) -> dict:
-    lowered = text.lower()
+def relevance_scoped_text(
+    sections: list[tuple[int, str | None, str]], patterns: list[str] | None
+) -> str:
+    """Concatenate only the page text a relevance filter keeps in scope.
+
+    This is the other half of apply_relevance_filter, and the half that was
+    missing. Scope rules, each chosen so that dropping a section can only ever
+    drop out-of-scope text:
+
+    * A section whose heading matches the filter is in scope.
+    * So is every section nested under it. A matching ``## Defender for AI ...``
+      entry owns its ``### Details`` subsection, whose own heading says nothing
+      about AI; scoping by heading alone would discard the entry's own body.
+    * **Page-level text is always in scope** -- the text before the first
+      heading, and the H1's own section. Neither belongs to a product entry, so
+      no per-entry pattern can be expected to claim it, and a page-wide
+      release-state banner lives in exactly that position. Dropping it would
+      lose real signal: the notice that "all Sentinel data connectors are
+      currently in Preview" is one half of matrix row 9's documented conflict.
+
+    Page-level text is kept **without conferring scope on anything nested under
+    it**. That is the whole subtlety of the third rule: marking the H1 in scope
+    as an *ancestor* would make every section on the page inherit it and restore
+    the unfiltered behaviour this function exists to remove.
+    """
+    if not patterns:
+        return "\n".join(body for _level, _heading, body in sections)
+    compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
+    kept: list[str] = []
+    ancestors: list[tuple[int, bool]] = []
+    for level, heading, body in sections:
+        while ancestors and ancestors[-1][0] >= level:
+            ancestors.pop()
+        if heading is None or level <= PAGE_LEVEL:
+            # Kept, and pushed as *not* in scope so children do not inherit it.
+            kept.append(body)
+            ancestors.append((level, False))
+            continue
+        in_scope = bool(ancestors and ancestors[-1][1]) or any(
+            c.search(heading) for c in compiled
+        )
+        ancestors.append((level, in_scope))
+        if in_scope:
+            kept.append(body)
+    return "\n".join(kept)
+
+
+def extract_signals(
+    text: str,
+    sections: list[tuple[int, str | None, str]],
+    relevance: list[str] | None = None,
+) -> dict:
+    """Reduce a page to the four status signals that make up its fingerprint.
+
+    All four are computed at one scope, which is what the signature is for: the
+    heading fields come from `sections`, and so does the text the phrase field is
+    taken over whenever a relevance filter narrows the source.
+
+    `text` is used verbatim when there is no filter, so an unfiltered source's
+    phrase set is computed exactly as it was before scoping existed and its
+    stored fingerprint is untouched by this change. Only the filtered sources
+    re-baseline.
+    """
+    headings = section_headings(sections)
     filtered = apply_relevance_filter(headings, relevance)
+    scoped = relevance_scoped_text(sections, relevance) if relevance else text
+    lowered = scoped.lower()
     return {
         "headings": filtered,
         "preview_qualified_headings": sorted(h for h in filtered if PREVIEW_QUALIFIER.search(h)),
@@ -172,6 +281,20 @@ def extract_signals(text: str, headings: list[str], relevance: list[str] | None 
         "heading_count": len(filtered),
         "relevance_filtered": bool(relevance),
     }
+
+
+def filter_collapsed(signals: dict) -> bool:
+    """True when a source declares a relevance filter that matched no heading.
+
+    Not an error and not a change: the fetch succeeded and the fingerprint is
+    honest about what it saw. It is the *coverage* that has gone -- the source is
+    now watching only its page-level text, and every later run will call that
+    "unchanged". Observed live on `sentinel-data-connectors-reference`, whose
+    filter matched 0 of 47 headings because the connector entries on that page
+    are not headings at all; the source had appeared to be watching something
+    only because the phrase signal was, incorrectly, taken over the whole page.
+    """
+    return bool(signals.get("relevance_filtered")) and not signals.get("heading_count")
 
 
 def version_signals(raw: str, pattern: str) -> dict:
@@ -232,10 +355,10 @@ def signals_for_source(source: dict) -> dict:
 
     if mode == "markdown":
         body = strip_frontmatter(raw)
-        return extract_signals(body, markdown_headings(body), relevance)
+        return extract_signals(body, markdown_sections(body), relevance)
 
     if mode == "html":
-        return extract_signals(strip_html(raw), html_headings(raw), relevance)
+        return extract_signals(strip_html(raw), html_sections(raw), relevance)
 
     raise ValueError(f"unknown mode: {mode}")
 
@@ -285,12 +408,22 @@ def describe_change(previous: dict, current: dict) -> list[str]:
     for heading in sorted(before_preview - after_preview):
         notes.append(f"(preview) qualifier REMOVED from heading: {heading!r}")
 
+    # Scope attribution. A reader of "status phrase appeared: 'retired'" cannot
+    # tell an in-scope trigger from an out-of-scope one without re-fetching and
+    # re-reading the page, and a detector that cries wolf trains its maintainer
+    # to stop looking. Naming the scope costs one word and makes the line
+    # evidence rather than an alarm.
+    scope = (
+        "relevance-scoped sections"
+        if (current.get("relevance_filtered") or previous.get("relevance_filtered"))
+        else "whole page"
+    )
     before_phrases = set(previous.get("status_phrases_present") or [])
     after_phrases = set(current.get("status_phrases_present") or [])
     for phrase in sorted(after_phrases - before_phrases):
-        notes.append(f"status phrase appeared: {phrase!r}")
+        notes.append(f"status phrase appeared in {scope}: {phrase!r}")
     for phrase in sorted(before_phrases - after_phrases):
-        notes.append(f"status phrase disappeared: {phrase!r}")
+        notes.append(f"status phrase disappeared from {scope}: {phrase!r}")
     return notes
 
 
@@ -322,17 +455,57 @@ def registry_problems(registry: dict) -> list[str]:
     A malformed registry is therefore reported up front and fails the run, which
     is the one case where this script is *meant* to go red: a fetch failure is
     expected and isolated, a broken registry is neither.
+
+    **Both arrays are validated.** `human_only_sources` was originally
+    unchecked, so a malformed human-only entry, an id colliding with a watched
+    source, or a row mapping of the wrong shape was invisible to every automated
+    run. Those entries are the *sole* backing for four of this repository's
+    eighteen dated items (matrix rows 12 and 13, and the NIST and CSA cross-walk
+    rows), which makes them the last place an unnoticed defect can be afforded.
+
+    Scope boundary worth stating: this function sees only the registry, so it
+    answers "is every entry well-formed and does it declare what it backs?" and
+    never "does every matrix row have a source?". That second question needs the
+    matrix, and is answered by `check_source_coverage` in
+    scripts/validate_bot_pr.py — the layer that already reads it.
     """
     problems: list[str] = []
     seen: set[str] = set()
-    for index, source in enumerate(registry.get("sources", [])):
-        identifier = source.get("id")
+
+    def check_shared(entry: dict, array: str, index: int) -> str | None:
+        """Rules every registry entry obeys, whichever array it lives in."""
+        identifier = entry.get("id")
         if not identifier:
-            problems.append(f"sources[{index}]: missing 'id'")
-            continue
+            problems.append(f"{array}[{index}]: missing 'id'")
+            return None
         if identifier in seen:
+            # Deliberately checked across both arrays: the same id appearing as
+            # watched and as human-only is exactly the mis-join that would make
+            # a row look covered by automation when nothing fetches it.
             problems.append(f"{identifier}: duplicate id")
         seen.add(identifier)
+
+        rows = entry.get("matrix_rows", [])
+        crosswalk = entry.get("crosswalk_rows", [])
+        # `isinstance(True, int)` is True, so bools are excluded explicitly:
+        # `"matrix_rows": [true]` would otherwise pass as a row number.
+        if not isinstance(rows, list) or any(
+            isinstance(r, bool) or not isinstance(r, int) for r in rows
+        ):
+            problems.append(f"{identifier}: 'matrix_rows' must be a list of integers")
+        if not isinstance(crosswalk, list) or any(not isinstance(r, str) for r in crosswalk):
+            problems.append(f"{identifier}: 'crosswalk_rows' must be a list of strings")
+        if not rows and not crosswalk:
+            problems.append(
+                f"{identifier}: declares neither 'matrix_rows' nor 'crosswalk_rows'; "
+                "a source that backs nothing cannot be checked for coverage"
+            )
+        return identifier
+
+    for index, source in enumerate(registry.get("sources", [])):
+        identifier = check_shared(source, "sources", index)
+        if identifier is None:
+            continue
         mode = source.get("mode")
         if not mode:
             problems.append(f"{identifier}: missing 'mode'")
@@ -342,6 +515,25 @@ def registry_problems(registry: dict) -> list[str]:
             problems.append(f"{identifier}: mode 'roadmap' requires 'feature_id'")
         if not source.get("url"):
             problems.append(f"{identifier}: missing 'url'")
+
+    for index, entry in enumerate(registry.get("human_only_sources", [])):
+        identifier = check_shared(entry, "human_only_sources", index)
+        if identifier is None:
+            continue
+        # `url` is the key signals_for_source fetches. Its presence here is the
+        # shape of an entry that has drifted into the watched array's schema,
+        # which is the one mistake that would quietly widen what automation
+        # reaches; `cite_url` is the human-readable page and is correct.
+        if entry.get("url"):
+            problems.append(
+                f"{identifier}: human-only entries must not carry 'url' — nothing fetches "
+                "them, and 'cite_url' is the key for the page a human reads"
+            )
+        if not entry.get("reason"):
+            problems.append(
+                f"{identifier}: human-only entries require a 'reason' — the reason is what "
+                "stops a future maintainer 'fixing' the entry by adding a credential"
+            )
     return problems
 
 
@@ -390,6 +582,7 @@ def main() -> int:
     results: dict[str, dict] = {}
     changed_ids: list[str] = []
     failed_ids: list[str] = []
+    collapsed_filter_ids: list[str] = []
     change_notes: dict[str, list[str]] = {}
 
     for source in registry.get("sources", []):
@@ -410,6 +603,23 @@ def main() -> int:
             results[source_id] = kept
             print(f"[warn] {source_id}: fetch/parse failed — baseline preserved: {exc}", file=sys.stderr)
             continue
+
+        # A relevance filter matching zero headings is not a fingerprint event --
+        # it carries no status meaning and must not move a baseline -- but it must
+        # not be silent either. It means the registry is claiming a narrowing it is
+        # not achieving: either the filter is wrong, or the page restructured out
+        # from under it. Either way that source's watched signal has collapsed to
+        # its page-level text, which is indistinguishable from "nothing changed" on
+        # every subsequent run. That indistinguishability is how this class of gap
+        # survives a release, so it is announced.
+        if filter_collapsed(signals):
+            collapsed_filter_ids.append(source_id)
+            print(
+                f"[warn] {source_id}: relevance_filter matched 0 headings — this source's "
+                "watched signal has collapsed to page-level text. The filter or the page "
+                "structure needs a human look; nothing here is a status change.",
+                file=sys.stderr,
+            )
 
         digest = fingerprint(signals)
         record = {
@@ -442,6 +652,11 @@ def main() -> int:
             "generator": "scripts/watch_sources.py",
             "changed_sources": sorted(changed_ids),
             "failed_sources": sorted(failed_ids),
+            # Fetched fine, fingerprinted fine, and watching almost nothing. Kept
+            # separate from failed_sources because the two need opposite responses:
+            # a failed source recovers by itself on the next run, a collapsed
+            # filter never does.
+            "collapsed_filter_sources": sorted(collapsed_filter_ids),
             "change_notes": change_notes,
             "sources": results,
             # Strictly what this run was able to reach, minus the watch-only
@@ -478,6 +693,7 @@ def main() -> int:
         changed=str(bool(changed_ids)).lower(),
         changed_sources=",".join(sorted(changed_ids)),
         failed_sources=",".join(sorted(failed_ids)),
+        collapsed_filter_sources=",".join(sorted(collapsed_filter_ids)),
     )
 
     # Exit 0 even when sources fail: a fetch failure is an expected, isolated

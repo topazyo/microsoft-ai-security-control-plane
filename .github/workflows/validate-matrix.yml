@@ -34,6 +34,7 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/pull_request_template.md'
       - 'scripts/**'
+      - 'tests/**'
   push:
     branches: [main]
     paths:
@@ -51,6 +52,7 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/pull_request_template.md'
       - 'scripts/**'
+      - 'tests/**'
   workflow_dispatch:
 
 permissions: {}
@@ -86,6 +88,13 @@ jobs:
 
       - name: Compile the automation scripts
         run: python3 -m compileall -q scripts
+
+      # Standard library only, so there is no install step. These cover the
+      # signal scoping the relevance filter depends on and the registry's row
+      # mappings - both are places where a defect stays green and silent, which
+      # is why they are tested rather than reviewed.
+      - name: Run the automation tests
+        run: python3 -m unittest discover -s tests -v
 
       - name: Validate matrix, sourcing and escalation direction
         run: |
