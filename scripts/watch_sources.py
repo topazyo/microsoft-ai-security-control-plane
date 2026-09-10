@@ -84,9 +84,12 @@ STATUS_PHRASES = [
 
 PREVIEW_QUALIFIER = re.compile(r"\(preview\)", re.IGNORECASE)
 
-# Heading levels at or below this are treated as page-level rather than as a
-# product entry, so a relevance filter never scopes them out. See
-# relevance_scoped_text for why they must not confer scope on their children.
+# The document title's heading level. Page-level means the text above the first
+# heading plus the title's own section, and a relevance filter never scopes those
+# out. Read *positionally*: only the first heading is the title, because a stray
+# heading at this level deeper in a page belongs to whatever entry contains it.
+# See relevance_scoped_text for that, and for why page-level text must not confer
+# scope on its children.
 PAGE_LEVEL = 1
 
 # Shape guard for `mode: "version"` captures. Whatever a framework publishes ends
@@ -143,6 +146,14 @@ NAMED_TAG = re.compile(r"</?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>", re.DOTALL)
 # removed before the marker is introduced.
 BLOCK_MARKER = "\x00"
 
+# Page shell rather than documentation: these change independently of the article
+# and must not reach any watched signal. Held as one constant because *both*
+# paths into a page have to agree about what counts as chrome — `strip_html` for
+# the text, `html_sections` for the headings. They did not, and that disagreement
+# is what let Learn's in-topic table of contents own an article's lead-in; see
+# html_sections.
+CHROME_ELEMENTS = re.compile(r"<(script|style|nav|header|footer)\b.*?</\1>", re.DOTALL | re.IGNORECASE)
+
 
 def _tag_separator(match: "re.Match[str]") -> str:
     return "" if match.group(1).lower() in INLINE_TAGS else BLOCK_MARKER
@@ -171,7 +182,7 @@ def strip_html(document: str) -> str:
     """
     main = re.search(r"<main\b[^>]*>(.*?)</main>", document, re.DOTALL | re.IGNORECASE)
     body = main.group(1) if main else document
-    body = re.sub(r"<(script|style|nav|header|footer)\b.*?</\1>", " ", body, flags=re.DOTALL | re.IGNORECASE)
+    body = CHROME_ELEMENTS.sub(" ", body)
     body = body.replace(BLOCK_MARKER, " ")
     body = NAMED_TAG.sub(_tag_separator, body)
     body = re.sub(r"<[^>]+>", BLOCK_MARKER, body)
@@ -191,20 +202,108 @@ def strip_html(document: str) -> str:
 HTML_HEADING = re.compile(r"<h([1-4])\b[^>]*>(.*?)</h\1>", re.DOTALL | re.IGNORECASE)
 MARKDOWN_HEADING = re.compile(r"^\s{0,3}(#{1,4})\s+(.*?)\s*#*\s*$")
 
+# A `<details>`/`<summary>` disclosure is how Learn renders a *reference entry*
+# whose title is not a heading. On the Sentinel data connectors reference every
+# one of ~430 connectors is one of these, which is why a heading filter reached 0
+# of that page's 47 headings while the page plainly carried the entry row 9
+# tracks — and why the per-entry "(Preview)" suffix that row 9 cites as evidence
+# was invisible to `preview_qualified_headings`.
+COLLAPSIBLE_ENTRY = re.compile(r"<summary\b[^>]*>(.*?)</summary>", re.DOTALL | re.IGNORECASE)
+# Learn builds its own page furniture from `<details class="popover ...">`: the
+# breadcrumb overflow, the page-actions menu, and the "Was this page helpful?"
+# widget whose summary text is the bare word "No". Excluding the shell by its
+# class, rather than allow-listing what article markup looks like, is deliberate,
+# and the direction of failure is the whole reason: if Learn renames the class, a
+# shell label turns up in a heading list, which is visible noise and re-baselines
+# once. An allow-list that stopped matching would silently drop real entries
+# instead, and a watched signal that goes quiet is the failure this repository can
+# least afford — it is indistinguishable from "nothing changed" forever.
+#
+# Matched as *open tag immediately followed by its own `<summary>`*, and the
+# lookahead leaves `match.end()` exactly at that summary's offset. Deliberately a
+# purely local test: the first attempt bounded each shell widget by searching
+# forward for `</details>`, and an unclosed one then ran to the *next* element's
+# close tag and silently excluded a real entry — the failure this exclusion exists
+# to avoid, reintroduced by the mechanism meant to prevent it. Nothing here can
+# reach past one tag, so malformed markup anywhere else cannot cost an entry.
+SHELL_COLLAPSIBLE = re.compile(
+    r"<details\b(?=[^>]*\bclass=\"[^\"]*\bpopover\b)[^>]*>\s*(?=<summary\b)", re.IGNORECASE
+)
+# Below `<h4>`, so a collapsible entry always nests under the heading that
+# precedes it, is never mistaken for the document title, and is never page-level.
+COLLAPSIBLE_LEVEL = 5
+
+
+def heading_text(fragment: str) -> str | None:
+    """Reduce a heading or entry-title fragment to the text a reader sees.
+
+    Tags are removed with *no* separator, which is why heading extraction was
+    never affected by the inline-tag phrase splitting fixed in `strip_html`:
+    `<strong>Preview</strong>` inside a title has always read as "Preview".
+    """
+    text = html.unescape(re.sub(r"<[^>]+>", "", fragment))
+    return re.sub(r"\s+", " ", text).strip() or None
+
+
+def shell_entry_offsets(body: str) -> set[int]:
+    """Offsets of the `<summary>` elements that label Learn's own page furniture.
+
+    One offset per shell widget, and no ranges: see SHELL_COLLAPSIBLE for why a
+    span-based version was wrong in the one direction that matters.
+    """
+    return {match.end() for match in SHELL_COLLAPSIBLE.finditer(body)}
+
 
 def html_sections(document: str) -> list[tuple[int, str | None, str]]:
+    """Split a page into sections at every heading and every collapsible entry.
+
+    **Chrome is removed before the split, and that ordering is a fix.** Learn
+    wraps its in-topic table of contents in `<nav aria-label="In this article">`
+    around an `<h2>In this article</h2>`. This function used to split on headings
+    while only `strip_html` removed chrome, so that navigation heading became a
+    section boundary and took ownership of the article's lead-in — the intro
+    paragraph and any page-wide release-state banner standing above the first real
+    heading. `relevance_scoped_text` keeps page-level text precisely so such a
+    banner can never be scoped out; on all 16 html sources it was keeping the
+    breadcrumbs while the banner sat one section below it, out of scope. The rule
+    that the heading list and the text a filter scopes must not disagree about the
+    page is stated in `section_headings`; `CHROME_ELEMENTS` is now the single
+    place either path asks what is chrome.
+
+    Collapsible entries are boundaries too, at `COLLAPSIBLE_LEVEL` — see
+    `COLLAPSIBLE_ENTRY` for why a page can carry its real entries there and
+    nowhere else.
+    """
     main = re.search(r"<main\b[^>]*>(.*?)</main>", document, re.DOTALL | re.IGNORECASE)
-    body = main.group(1) if main else document
+    body = CHROME_ELEMENTS.sub(" ", main.group(1) if main else document)
+
+    shell = shell_entry_offsets(body)
+    boundaries: list[tuple[int, int, str]] = [
+        (match.start(), int(match.group(1)), match.group(2))
+        for match in HTML_HEADING.finditer(body)
+    ]
+    boundaries += [
+        (match.start(), COLLAPSIBLE_LEVEL, match.group(1))
+        for match in COLLAPSIBLE_ENTRY.finditer(body)
+        if match.start() not in shell
+    ]
+    boundaries.sort(key=lambda boundary: boundary[0])
+
     sections: list[tuple[int, str | None, str]] = []
     level = 0
     heading: str | None = None
     start = 0
-    for match in HTML_HEADING.finditer(body):
-        sections.append((level, heading, strip_html(body[start : match.start()])))
-        level = int(match.group(1))
-        text = html.unescape(re.sub(r"<[^>]+>", "", match.group(2)))
-        heading = re.sub(r"\s+", " ", text).strip() or None
-        start = match.start()
+    for position, boundary_level, fragment in boundaries:
+        text = heading_text(fragment)
+        # An empty title is not a section. Carrying it would open a section whose
+        # heading is None, and `relevance_scoped_text` reads that as page-level —
+        # so an empty `<summary>` would quietly force its body into scope.
+        if text is None:
+            continue
+        sections.append((level, heading, strip_html(body[start:position])))
+        level = boundary_level
+        heading = text
+        start = position
     sections.append((level, heading, strip_html(body[start:])))
     return sections
 
@@ -278,30 +377,63 @@ def relevance_scoped_text(
       entry owns its ``### Details`` subsection, whose own heading says nothing
       about AI; scoping by heading alone would discard the entry's own body.
     * **Page-level text is always in scope** -- the text before the first
-      heading, and the H1's own section. Neither belongs to a product entry, so
-      no per-entry pattern can be expected to claim it, and a page-wide
-      release-state banner lives in exactly that position. Dropping it would
-      lose real signal: the notice that "all Sentinel data connectors are
+      heading, and the document title's own section. Neither belongs to a
+      product entry, so no per-entry pattern can be expected to claim it, and a
+      page-wide release-state banner lives in exactly that position. Dropping it
+      would lose real signal: the notice that all Sentinel data connectors "are
       currently in Preview" is one half of matrix row 9's documented conflict.
 
+      **That justification was false when it was first written here, and issue
+      #31 is the record of it.** The banner does stand above the first *authored*
+      heading -- but below Learn's navigation heading, and `html_sections` used
+      to split on headings before removing chrome. So the notice was owned by an
+      `<h2>In this article</h2>` and this rule kept the breadcrumbs instead. The
+      rule was sound and simply never reached the thing it was justified by. A
+      rationale the code cannot exhibit is the defect class issue #31 filed, so
+      the ordering fix in `html_sections` and this paragraph belong together.
+
+    * **Page-level is positional, not a heading level.** Only the *first* heading
+      is the title. This used to read as "any heading at `PAGE_LEVEL` or above",
+      and the Sentinel reference page carries a mis-authored
+      `<h1>NOTE - UPDATE:</h1>` buried inside one connector entry: it held
+      336,102 of that page's 1,084,895 characters -- 31% -- permanently in scope,
+      on the one source whose entire reason for declaring a filter was that an
+      unfiltered fingerprint of it would change on nearly every run. A stray
+      heading deep in a document belongs to the entry containing it, whatever
+      level it is marked up at.
+
     Page-level text is kept **without conferring scope on anything nested under
-    it**. That is the whole subtlety of the third rule: marking the H1 in scope
-    as an *ancestor* would make every section on the page inherit it and restore
-    the unfiltered behaviour this function exists to remove.
+    it**. That is the whole subtlety of the third rule: marking the title in
+    scope as an *ancestor* would make every section on the page inherit it and
+    restore the unfiltered behaviour this function exists to remove.
     """
     if not patterns:
         return "\n".join(body for _level, _heading, body in sections)
     compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
     kept: list[str] = []
     ancestors: list[tuple[int, bool]] = []
+    title_seen = False
     for level, heading, body in sections:
         while ancestors and ancestors[-1][0] >= level:
             ancestors.pop()
-        if heading is None or level <= PAGE_LEVEL:
-            # Kept, and pushed as *not* in scope so children do not inherit it.
+        if heading is None:
+            # Text above the first heading. Kept, and pushed as *not* in scope so
+            # children do not inherit it. Does not consume the title: the title is
+            # the first heading, which has not been reached yet.
             kept.append(body)
             ancestors.append((level, False))
             continue
+        if level <= PAGE_LEVEL and not title_seen:
+            title_seen = True
+            kept.append(body)
+            ancestors.append((level, False))
+            continue
+        # Only an authored heading consumes the title slot. A collapsible entry
+        # must not: Learn emits its page-shell disclosures above the `<h1>`, and
+        # letting one of those claim "first heading" would demote the real title
+        # to a stray and scope the page's own lead-in out.
+        if level < COLLAPSIBLE_LEVEL:
+            title_seen = True
         in_scope = bool(ancestors and ancestors[-1][1]) or any(
             c.search(heading) for c in compiled
         )
