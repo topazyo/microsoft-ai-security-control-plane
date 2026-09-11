@@ -13,6 +13,18 @@ on:
   schedule:
     - cron: '41 8 * * 1'   # Mondays, off the hour
   workflow_dispatch:
+    inputs:
+      window_days:
+        description: >-
+          Override the staleness window for one run. Empty uses the value in
+          .github/watch-state/sources.json. Use -1 to enumerate every dated
+          item -- the comparison is strict `age > window`, so 0 silently drops
+          anything stamped today. Exists so this workflow can be exercised
+          against the real repository, which is the only place it runs: a
+          workflow cannot be unit-tested from tests/.
+        required: false
+        type: string
+        default: ''
 
 permissions: {}
 
@@ -44,7 +56,14 @@ jobs:
       - name: Evaluate staleness
         id: stale
         shell: bash
-        run: python3 scripts/stale_guard.py | tee staleness.txt
+        env:
+          WINDOW_DAYS: ${{ inputs.window_days }}
+        run: |
+          if [ -n "${WINDOW_DAYS}" ]; then
+            python3 scripts/stale_guard.py --window-days "${WINDOW_DAYS}" | tee staleness.txt
+          else
+            python3 scripts/stale_guard.py | tee staleness.txt
+          fi
 
       # Fail closed on the output, and read the scope precisely rather than
       # claiming more than this buys. `== 'true'` treated an ABSENT output as
@@ -83,17 +102,73 @@ jobs:
             echo "overdue, not that the automation is failing. See"
             echo "checklists/capability-status-verification.md, Group 9."
             echo
-            echo "_Raised automatically by the stale guard; this issue is reused, not duplicated._"
+            echo "_Raised automatically by the stale guard. **One issue per staleness"
+            echo "episode**, not one issue reused forever: this body is rewritten in"
+            echo "place on every run while anything is stale, so it always states the"
+            echo "current residue rather than the residue of the day it was opened, and"
+            echo "the guard closes the issue itself once nothing is stale. A later"
+            echo "episode opens a new issue. The runs are joined by the comment history"
+            echo "here and by the run URL in the closing comment._"
           } > body.md
 
           existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
+            # Edit before commenting. The body is what a reader sees first and
+            # it is the half that went false twice: it kept the list from the
+            # day the issue opened while the comments below it carried the
+            # current one, so the issue contradicted itself and a human had to
+            # rewrite it by hand both times. The comment is the audit trail --
+            # what was stale on which run -- and the body is the live state.
+            gh issue edit "$existing" --body-file body.md
             gh issue comment "$existing" --body-file body.md
-            echo "Updated issue #${existing}."
+            echo "Rewrote the body of issue #${existing} and appended this run."
           else
             gh issue create --title "$TITLE" --body-file body.md --label stale-rows
             echo "Opened a new staleness issue."
           fi
+
+      # Placed AFTER the step above, and the order is load-bearing rather than
+      # cosmetic: `WorkflowOutputContractTests` reads every `outputs.stale`
+      # gate in this file, and the first version of that test read only the
+      # first match, so a close step placed above the open step would have been
+      # the one checked while the open step went unread.
+      #
+      # `== 'false'` is the fail-closed direction *for this step*, and it is the
+      # opposite literal comparison from the one above on purpose. An absent
+      # output must never close the issue: the step above opens on anything that
+      # is not the string "false", so a missing output files a report a human
+      # can dismiss, while here it would silently retract one. Both gates are
+      # implicitly ANDed with `success()`, so a crashed Evaluate step neither
+      # files nor closes -- the crash signal is the red run.
+      - name: Close the staleness issue when nothing is stale
+        if: steps.stale.outputs.stale == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'Stale rows: last-verified dates exceed the monthly window'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            echo "Nothing is stale and no staleness issue is open; nothing to close."
+            exit 0
+          fi
+
+          {
+            echo "Nothing is stale. Every dated item is inside the window declared"
+            echo "in .github/watch-state/sources.json:"
+            echo
+            cat staleness.txt
+            echo
+            echo "Closed automatically by the stale guard, which ends this staleness"
+            echo "episode. The next one opens a new issue rather than reopening this"
+            echo "one, so each issue's history stays scoped to the episode it"
+            echo "describes."
+            echo
+            echo "Run: ${RUN_URL}"
+          } > closing.md
+
+          gh issue close "$existing" --comment "$(cat closing.md)"
+          echo "Closed issue #${existing}."
 
       - name: Record result in the run summary
         run: cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"
