@@ -15,7 +15,7 @@
 | **Roadmap** | Announced with a Microsoft 365 Roadmap entry; not yet rolling out. |
 | **Requires further validation** | Microsoft's own sources conflict or the status cannot be confirmed from primary sources alone; verify in your own tenant before relying on it. |
 
-## The matrix (v0.1.2 — 13 rows, expanding)
+## The matrix (v0.1.3 — 13 rows, expanding)
 
 The four **DLP for Microsoft 365 Copilot** rows (1, 2, 3 and 5) are the worked example of why this matrix exists: what most people name as *one* feature is **four sub-capabilities that shipped on different schedules** — and as of the current verification date they still do not share one status.
 
