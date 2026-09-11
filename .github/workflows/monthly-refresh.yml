@@ -144,16 +144,26 @@ jobs:
       # write above lives only on the runner and is discarded with it, so the
       # repository's fingerprints are untouched and the next run re-detects the
       # same change. Deferring costs nothing except the human's time.
-      - name: Announce that the monthly consolidation is queued for a human
+      #
+      # **This step files an issue, and that is the whole point of it.** It used
+      # to write only a step summary and a `::warning::` annotation, on a run
+      # that concludes *success* -- and GitHub's default Actions notification
+      # setting is failed-workflows-only, so the one tier that requires a human
+      # was the one tier that never told the human. The 2026-09-06 run is the
+      # precedent: it fired, it was green, and nobody heard it. The first
+      # notification this repository produced was the stale guard's issue, which
+      # by construction arrives only once the window has already been missed.
+      - name: Tell a human the monthly consolidation is waiting for them
         if: steps.creds.outputs.present != 'true'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FAILED_SOURCES: ${{ steps.watch.outputs.failed_sources }}
+          TITLE: 'Monthly consolidation is waiting on a human'
         run: |
           echo "::warning::Monthly consolidation did NOT run - no ANTHROPIC_API_KEY is configured. Run tier D3 locally; see docs/agent-cadence.md."
           {
-            cat <<'SUMMARY'
-          ## Monthly consolidation deferred to a local run
-
+            printf '## Monthly consolidation is waiting on a human — %s\n\n' "$(date -u +'%Y-%m')"
+            cat <<'BODY'
           No `ANTHROPIC_API_KEY` is configured, so tier D3 did not run in CI.
           This run is green because nothing failed - the consolidation is queued for a
           human, not skipped.
@@ -161,19 +171,50 @@ jobs:
           **Nothing was written to the repository.** The `--update-baseline` write above
           exists only on this runner and is discarded with it, so `fingerprints.json` is
           unchanged and the next run re-detects the same state.
-          SUMMARY
+          BODY
             if [ -n "${FAILED_SOURCES}" ]; then
               printf '\n**Unreachable this run:** %s - do not advance those rows dates.\n' "${FAILED_SOURCES}"
             fi
-            cat <<'SUMMARY'
+            cat <<'BODY'
 
           **What to do:** follow *Running tiers D2 and D3 locally* in
           `docs/agent-cadence.md`. Advance a last-verified date only where the source
           was fetched successfully **and** is not listed under *Coverage loss in the
           watched signal* above, and write exactly one CHANGELOG heading for this
           calendar month.
-          SUMMARY
-          } >> "${GITHUB_STEP_SUMMARY}"
+
+          **How much runway is left**, as this run measured it:
+
+          BODY
+            printf '```\n'
+            python3 scripts/stale_guard.py
+            printf '```\n'
+            cat <<'BODY'
+
+          _Raised automatically by the monthly refresh. **Close this when the refresh
+          pull request merges.** It is deliberately not closed on a schedule: only a
+          human can know whether the consolidation actually happened, and a workflow
+          that closed it by the calendar would be retracting an outstanding obligation
+          rather than discharging one. If it is still open when the next monthly run
+          fires, that run rewrites this body to the new month and appends a comment._
+          BODY
+          } > "${RUNNER_TEMP}/deferral.md"
+
+          cat "${RUNNER_TEMP}/deferral.md" >> "${GITHUB_STEP_SUMMARY}"
+
+          # Same create-or-update shape as .github/workflows/stale-guard.yml, and
+          # the body is edited rather than only appended to for the same reason:
+          # the first thing a reader sees must describe the current cycle, not
+          # the one the issue happened to be opened in.
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file "${RUNNER_TEMP}/deferral.md"
+            gh issue comment "$existing" --body-file "${RUNNER_TEMP}/deferral.md"
+            echo "Rewrote the body of issue #${existing} and appended this run."
+          else
+            gh issue create --title "$TITLE" --body-file "${RUNNER_TEMP}/deferral.md"
+            echo "Opened a new consolidation-due issue."
+          fi
 
       # Renamed to what it does. It was called "Escalate rows needing in-tenant
       # confirmation" and held a GH_TOKEN, but never invoked `gh` at all -- the
