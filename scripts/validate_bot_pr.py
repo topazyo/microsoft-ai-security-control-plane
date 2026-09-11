@@ -212,14 +212,27 @@ def uncommitted_governed_changes() -> str | None:
     automated run wrote something and never committed it". Only the second is a
     failure, and only the second is invisible to a diff against the base ref.
 
-    **Scoped to `GOVERNED_PATHS`, and the scoping is the whole point.** An
-    unscoped `git status --porcelain` reports untracked files too, and both bot
-    workflows leave an untracked `evidence/` directory inside the checkout --
-    `--evidence-out evidence/evidence.json` in the monthly refresh, and the
-    downloaded artifact in the source watch -- neither of which is gitignored.
-    So the unscoped form was dirty on every single run, which would have failed
-    exactly the correct-outcome path this check exists to keep green: an
-    adjudicator that files an issue and commits nothing.
+    **Scoped to `GOVERNED_PATHS`, and the scoping is the whole point.** The
+    question is narrow by construction: an automated run may only write inside
+    the allowlist, so only a governed path can hold the write this probe is
+    looking for. An unscoped `git status --porcelain` answers a different and
+    much louder question -- is anything at all in this checkout dirty -- and
+    every extra thing it reports is a way to fail the correct-outcome path this
+    check exists to keep green: an adjudicator that files an issue and commits
+    nothing. The local run in `docs/agent-cadence.md` writes a root-level
+    `evidence.json`; a `watch.log` sits beside it; an editor leaves a swap
+    file. None of those is an uncommitted automated change, and none of them
+    should redden a run.
+
+    **That rationale is deliberately about the design, not the environment.**
+    An earlier version of this docstring justified the same scoping by claiming
+    both bot workflows leave an untracked evidence directory "neither of which
+    is gitignored", so the unscoped form "was dirty on every single run". That
+    was false the day it was written -- the commit adding the sentence also
+    added the ignore rule for `evidence/` -- and it was the third time in this
+    repository that correct code shipped with a false stated reason. An
+    observation about what happens to be untracked expires the moment someone
+    edits `.gitignore`; a statement about what the probe is asking does not.
 
     Tri-state, because "clean" and "could not look" must not be the same
     answer. `git status` failing -- a dubious-ownership refusal, a broken index,

@@ -546,11 +546,16 @@ class UnreadableTargetTests(GuardRunner):
 
 
 class WorkflowOutputContractTests(GuardRunner):
-    """stale-guard.yml opens the staleness issue by comparing `stale` to a literal.
+    """stale-guard.yml acts on the `stale` output by comparing it to a literal.
 
     The script writes `str(bool(...)).lower()`, so `True` would silently never
     match and the issue would never be opened - a green workflow that reports
     nothing. Both halves are read in one test because the coupling is the point.
+
+    There are now two such gates, pointing in opposite directions: one opens or
+    updates the issue, one closes it. They are read together because a literal
+    that no longer matches is invisible either way -- an issue that is never
+    filed and an issue that is never closed both look like a green run.
     """
 
     WORKFLOW = REPO_ROOT / ".github" / "workflows" / "stale-guard.yml"
@@ -558,6 +563,34 @@ class WorkflowOutputContractTests(GuardRunner):
     # `!= 'false'` -- but the quoted literal must be one the script can actually
     # emit, in the script's own casing.
     GATE = re.compile(r"outputs\.stale\s*(==|!=)\s*['\"]([^'\"]+)['\"]")
+    STEP_NAME = re.compile(r"^\s*-\s+name:\s*(.+?)\s*$")
+
+    OPEN_STEP = "Open or update the staleness issue"
+    CLOSE_STEP = "Close the staleness issue when nothing is stale"
+
+    def gates(self) -> list[tuple[str, str, str]]:
+        """Every `outputs.stale` gate in the file, tagged with the step it guards.
+
+        `finditer`, not `search`. The first version of this read the first match
+        only, which was correct while there was exactly one gate and became a
+        vacuous pass the moment a second one was added: whichever step happened
+        to come first in the file would be the only one checked, and the other
+        could compare against a literal the script never emits.
+        """
+        found: list[tuple[str, str, str]] = []
+        step_name = "<before the first named step>"
+        for line in self.WORKFLOW.read_text(encoding="utf-8").splitlines():
+            named = self.STEP_NAME.match(line)
+            if named:
+                step_name = named.group(1)
+            for match in self.GATE.finditer(line):
+                found.append((step_name, match.group(1), match.group(2)))
+        return found
+
+    def gate_for(self, step: str) -> tuple[str, str]:
+        matching = [(op, lit) for name, op, lit in self.gates() if name == step]
+        self.assertEqual(len(matching), 1, f"expected exactly one `stale` gate on {step!r}")
+        return matching[0]
 
     def emitted_literals(self) -> set[str]:
         """Both values the script can write, derived by running it."""
@@ -573,12 +606,28 @@ class WorkflowOutputContractTests(GuardRunner):
         self.assertEqual(fresh_outputs["stale"], "false", fresh_report)
         return {stale_outputs["stale"], fresh_outputs["stale"]}
 
-    def test_the_workflow_gate_matches_a_literal_the_script_emits(self):
-        match = self.GATE.search(self.WORKFLOW.read_text(encoding="utf-8"))
-        self.assertIsNotNone(match, "stale-guard.yml no longer gates on the `stale` output")
-        self.assertIn(match.group(2), self.emitted_literals())
+    def test_every_workflow_gate_matches_a_literal_the_script_emits(self):
+        gates = self.gates()
+        self.assertGreaterEqual(
+            len(gates), 2, "stale-guard.yml no longer gates both paths on the `stale` output"
+        )
+        emitted = self.emitted_literals()
+        for step, operator, literal in gates:
+            with self.subTest(step=step):
+                self.assertIn(literal, emitted)
 
-    def test_the_gate_fails_closed_on_an_absent_output(self):
+    def test_both_named_steps_are_present_and_each_carries_a_gate(self):
+        """The step names are the join between this test and the workflow.
+
+        Without this, renaming a step would make `gate_for` find nothing and
+        the direction tests below would fail on a confusing assertion about a
+        list length rather than on the thing that actually changed.
+        """
+        named = {step for step, _, _ in self.gates()}
+        self.assertIn(self.OPEN_STEP, named)
+        self.assertIn(self.CLOSE_STEP, named)
+
+    def test_the_opening_gate_fails_closed_on_an_absent_output(self):
         """An absent output must not read as "not stale".
 
         Scoped to what the comparison actually buys, because the obvious
@@ -594,15 +643,105 @@ class WorkflowOutputContractTests(GuardRunner):
         via pipefail, which is the right signal anyway -- an issue filed from a
         crashed run would paste a truncated report into it.
         """
-        operator, literal = self.GATE.search(
-            self.WORKFLOW.read_text(encoding="utf-8")
-        ).groups()
+        operator, literal = self.gate_for(self.OPEN_STEP)
         absent = ""
         opens_issue = absent != literal if operator == "!=" else absent == literal
         self.assertTrue(
             opens_issue,
             f"gate `stale {operator} '{literal}'` treats an absent output as not-stale",
         )
+
+    def test_the_closing_gate_fails_closed_in_the_other_direction(self):
+        """Fail-closed means something different for the step that closes.
+
+        The opening gate must treat an absent output as stale, because the cost
+        of a spurious report is a human dismissing it. The closing gate must
+        not, because the cost there is the guard silently retracting a live
+        finding -- and an issue that was closed by a runner with no
+        GITHUB_OUTPUT looks exactly like one closed because the residue was
+        cleared. So the two gates compare against the same literal in opposite
+        directions, and asserting only one of them would leave the more
+        dangerous half unchecked.
+        """
+        operator, literal = self.gate_for(self.CLOSE_STEP)
+        absent = ""
+        closes_issue = absent != literal if operator == "!=" else absent == literal
+        self.assertFalse(
+            closes_issue,
+            f"gate `stale {operator} '{literal}'` closes the issue on an absent output",
+        )
+
+    def test_the_close_step_is_ordered_after_the_open_step(self):
+        """Order is load-bearing, not cosmetic.
+
+        `gates()` used to read the first match only. A close step placed above
+        the open step would then have been the one checked, leaving the open
+        step's literal unread -- which is exactly the vacuous-pass shape this
+        file exists to prevent. The order is pinned so the fix has a reason
+        that survives the next edit to the workflow.
+        """
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        self.assertLess(text.index(self.OPEN_STEP), text.index(self.CLOSE_STEP))
+
+
+class WorkflowIssueMaintenanceTests(unittest.TestCase):
+    """The guard maintains its issue; it does not only append to it.
+
+    Before this, the stale path could only `gh issue comment`, so the body kept
+    the list from the day the episode opened while the comments below carried
+    the current one. That body went false twice and a human rewrote it both
+    times. The fix is mechanical -- rewrite the body in place, and close the
+    issue when nothing is stale -- and it changes the identity model, which is
+    why the prose is pinned here alongside the commands.
+    """
+
+    WORKFLOW = WorkflowOutputContractTests.WORKFLOW
+
+    def workflow_text(self) -> str:
+        return self.WORKFLOW.read_text(encoding="utf-8")
+
+    def test_the_stale_path_rewrites_the_body_and_records_the_run(self):
+        text = self.workflow_text()
+        self.assertIn("gh issue edit \"$existing\" --body-file body.md", text)
+        self.assertIn("gh issue comment \"$existing\" --body-file body.md", text)
+
+    def test_the_zero_path_closes_the_issue(self):
+        self.assertIn("gh issue close \"$existing\"", self.workflow_text())
+
+    def test_the_body_no_longer_claims_the_issue_is_reused(self):
+        """The replaced wording, pinned so it cannot come back.
+
+        "This issue is reused, not duplicated" described the old behaviour
+        accurately and describes the new behaviour falsely: the lookup searches
+        `--state open`, so once the guard closes an issue the next staleness
+        episode opens a fresh one. Leaving the sentence would have published a
+        continuity guarantee the workflow had just stopped providing.
+        """
+        offenders = [
+            line
+            for line in self.workflow_text().splitlines()
+            if "reused" in line and "not one issue reused forever" not in line
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_the_body_states_the_per_episode_identity_model(self):
+        """And a removed sentence must fail rather than silently pass."""
+        text = self.workflow_text()
+        self.assertIn("One issue per staleness", text)
+        self.assertIn("A later", text)
+        self.assertIn("episode opens a new issue", text)
+
+    def test_the_dispatch_input_exists_so_the_workflow_can_be_exercised(self):
+        """A workflow cannot be unit-tested from tests/; this is how it is tested.
+
+        The input is the only way to make the real repository produce a stale
+        result on demand, which is what the three break-test dispatches on this
+        branch used. Pinned because removing it would leave the stale path
+        unreachable until something genuinely goes stale.
+        """
+        text = self.workflow_text()
+        self.assertIn("window_days:", text)
+        self.assertIn('--window-days "${WINDOW_DAYS}"', text)
 
 
 class LiveTrackedFileTests(GuardRunner):
