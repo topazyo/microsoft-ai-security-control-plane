@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -1074,6 +1075,171 @@ class HumanOnlyContainmentTests(unittest.TestCase):
         for sample in (shipped_inline, shipped_across_echoes):
             with self.subTest(sample=sample[:40]):
                 self.assertIsNotNone(self.OVERSTATED_CONTAINMENT.search(sample))
+
+
+class StatedRationaleTests(unittest.TestCase):
+    """A stated rationale is a claim, and this repository keeps publishing false ones.
+
+    Three instances now, the same shape every time, and not one of them
+    reachable by testing the code:
+
+    1. `relevance_filter`'s page-level justification, which explained the rule
+       by the page-wide banner it was keeping in scope while a chrome heading
+       owned that banner and the rule reached breadcrumbs (retracted, 2026-09).
+    2. `check_human_only_containment`'s error message, which claimed a scope
+       its own docstring three lines above correctly denied (`HumanOnlyContainmentTests`).
+    3. `uncommitted_governed_changes`' docstring, which justified scoping the
+       probe to `GOVERNED_PATHS` by observing that the workflows' evidence
+       directory was not ignored -- when the commit that added the sentence
+       added the ignore rule for it.
+
+    The code was right all three times; only the explanation was wrong, and an
+    explanation is exactly what an assertion about behaviour cannot reach. So
+    it is pinned the way a quote is: the retracted sentence may not come back,
+    and the replacement's supporting fact is re-derived from git rather than
+    transcribed. The general lesson is in the docstring being guarded here --
+    prefer a rationale that rests on the design over one that rests on an
+    observation about the environment, because the second expires.
+    """
+
+    # This file is scanned too, which is why the banned phrase is never written
+    # out as a literal anywhere below.
+    SCANNED = (
+        REPO_ROOT / "scripts" / "validate_bot_pr.py",
+        REPO_ROOT / "scripts" / "watch_sources.py",
+        REPO_ROOT / "scripts" / "stale_guard.py",
+        REPO_ROOT / "tests" / "test_validate_bot_pr.py",
+        REPO_ROOT / "docs" / "agent-cadence.md",
+        REPO_ROOT / "CONTRIBUTING.md",
+    )
+
+    # Naming a retracted claim in order to retract it is the one legitimate
+    # use, and the same allowance `ContributorInstructionTests` makes with
+    # "used to say". Kept to three unambiguous markers: anything vaguer would
+    # let a fresh false rationale sit next to an innocent "no longer" and pass.
+    RETRACTION_CUES = ("used to say", "earlier version", "was false")
+    CUE_WINDOW = 400
+
+    @staticmethod
+    def unignored_bundle_claim() -> "re.Pattern[str]":
+        """Assembled at runtime, because this file is one of the scanned surfaces.
+
+        PR #38's guard learned this on its first run: a literal fixture written
+        to exercise a surface scanner is itself a surface, and the scanner
+        correctly fired on the comment explaining it.
+
+        Matched on adjacency rather than co-occurrence, bounded by a *paragraph*
+        rather than by a sentence. The first draft of this pattern borrowed
+        `[^.]` from `OVERSTATED_CONTAINMENT` above and was vacuous: the shipped
+        sentence names `evidence/evidence.json`, and that filename's own dot
+        stopped the match dead. The positive control below is the only reason
+        that was caught, which is the argument for having one.
+
+        The negative lookahead is what replaces it -- the artifact and the claim
+        about it have to be in the same paragraph -- and it still crosses
+        newlines, because the claim shipped inside a wrapped docstring where a
+        line-scoped pattern would have seen neither half.
+
+        Every gap inside the claim is `\\s+` for the same reason, found the same
+        way: the first attempt spelled "neither of which is" as a literal, which
+        held only because the shipped line happened not to wrap there. Re-wrap
+        the paragraph by one word and the detector goes silent while the claim
+        stays on the page.
+        """
+        ignored = "git" + "ignored"
+        return re.compile(
+            r"evidence(?:(?!\n\s*\n)[\s\S]){0,200}?"
+            r"(?:neither\s+of\s+which\s+is|is\s+not|are\s+not|never)\s+" + ignored,
+            re.IGNORECASE,
+        )
+
+    def test_no_scanned_file_claims_an_evidence_bundle_escapes_the_ignore_rules(self):
+        pattern = self.unignored_bundle_claim()
+        for path in self.SCANNED:
+            with self.subTest(document=path.name):
+                text = path.read_text(encoding="utf-8")
+                for match in pattern.finditer(text):
+                    preceding = text[max(0, match.start() - self.CUE_WINDOW) : match.start()]
+                    if any(cue in preceding.lower() for cue in self.RETRACTION_CUES):
+                        continue
+                    self.fail(
+                        f"{path.name} asserts that an evidence bundle is not ignored, "
+                        f"with no retraction marker near it: {match.group(0)!r}"
+                    )
+
+    def test_the_guard_matches_the_wording_it_was_written_to_catch(self):
+        """A detector that matches nothing passes over everything.
+
+        Both the spelling that shipped and the same sentence re-wrapped, since
+        a docstring's line breaks move whenever anyone edits the paragraph
+        around it.
+        """
+        ignored = "git" + "ignored"
+        as_shipped = (
+            "An\n    unscoped `git status --porcelain` reports untracked files "
+            "too, and both bot\n    workflows leave an untracked `evidence/` "
+            "directory inside the checkout --\n    `--evidence-out "
+            "evidence/evidence.json` in the monthly refresh, and the\n    "
+            "downloaded artifact in the source watch -- neither of which is "
+            f"{ignored}."
+        )
+        rewrapped = (
+            "both bot workflows leave an untracked evidence directory "
+            f'"neither of which\n    is {ignored}", so the unscoped form was '
+            "dirty on every single run."
+        )
+        for sample in (as_shipped, rewrapped):
+            with self.subTest(sample=sample[-48:]):
+                self.assertIsNotNone(self.unignored_bundle_claim().search(sample))
+
+    def test_the_retraction_allowance_does_not_swallow_a_fresh_claim(self):
+        """The escape hatch must not be a hole.
+
+        Same sentence, same claim, no retraction marker in front of it: the
+        guard has to still fire, or the allowance would have quietly disabled
+        it for every file that mentions a past correction anywhere.
+        """
+        ignored = "git" + "ignored"
+        fresh = f"The evidence bundle is not {ignored}, so the probe must be scoped."
+        pattern = self.unignored_bundle_claim()
+        match = pattern.search(fresh)
+        self.assertIsNotNone(match)
+        preceding = fresh[max(0, match.start() - self.CUE_WINDOW) : match.start()]
+        self.assertFalse(any(cue in preceding.lower() for cue in self.RETRACTION_CUES))
+
+    def test_both_spellings_of_the_evidence_bundle_are_ignored(self):
+        """The replacement rationale's supporting fact, derived rather than asserted.
+
+        `uncommitted_governed_changes` now explains its scoping partly by
+        saying the documented local run writes a root-level `evidence.json`
+        that an unscoped probe would trip on. That is a statement about the
+        design, but it is worth nothing if the file is committable -- an
+        adjudicator's `git add -A` would publish upstream page text.
+
+        Asked of git rather than read out of `.gitignore`, because reading the
+        ignore file back is transcription: it would pass on a rule that a later
+        negation pattern overrides.
+        """
+        for candidate in ("evidence.json", "evidence/evidence.json"):
+            with self.subTest(path=candidate):
+                completed = subprocess.run(
+                    ["git", "check-ignore", "--quiet", "--", candidate],
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(
+                    completed.returncode,
+                    128,
+                    f"git could not answer whether {candidate} is ignored: "
+                    f"{completed.stderr.strip()}",
+                )
+                self.assertEqual(
+                    completed.returncode,
+                    0,
+                    f"{candidate} is not ignored; the documented local run writes it "
+                    "into the checkout and it carries verbatim upstream page text",
+                )
 
 
 class PublishedTestCountTests(unittest.TestCase):
