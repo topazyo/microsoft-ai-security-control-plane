@@ -923,8 +923,14 @@ class HumanOnlyContainmentTests(unittest.TestCase):
     contributors as a guarantee -- "registered under `human_only_sources`, never
     under `sources`" -- while nothing enforced it. Per the registry's own
     reason the page is "perfectly fetchable, and that is exactly why the rule
-    matters": the containment is what keeps non-Learn page content away from the
-    model tier entirely.
+    matters": the containment is what keeps GitHub Docs page content away from
+    the model tier.
+
+    Scoped to GitHub Docs deliberately, matching the docstring on the check
+    itself. The watched array is not Learn-only -- four entries fetch from
+    `raw.githubusercontent.com`, one from the OWASP GenAI site and one from the
+    public Microsoft 365 Roadmap -- so "non-Learn content" claims a containment
+    this check does not provide.
     """
 
     def check(self, registry: dict) -> "validate.Findings":
@@ -982,6 +988,92 @@ class HumanOnlyContainmentTests(unittest.TestCase):
     def test_the_citation_allowlist_and_the_gate_share_one_pattern(self):
         """Or the condition could drift away from the admission it qualifies."""
         self.assertIn(validate.GITHUB_DOCS_HOST, validate.ALLOWED_SOURCE_HOSTS)
+
+    def test_the_error_message_states_the_scope_the_check_enforces(self):
+        """The message a maintainer reads must not claim more than the gate does.
+
+        This check inspects `sources` entries for `docs.github.com` and nothing
+        else, so "GitHub Docs page content" is the containment it provides. The
+        message said "non-Learn page content", which is a strictly larger claim
+        and a false one -- the watched array fetches from
+        `raw.githubusercontent.com`, the OWASP GenAI site and the Roadmap API,
+        none of them Learn and none of them stopped by this gate.
+        """
+        findings = self.check(
+            {
+                "sources": [
+                    {"id": "sneaky", "url": "https://docs.github.com/en/copilot/x"}
+                ],
+                "human_only_sources": [],
+            }
+        )
+        message = "\n".join(findings.errors)
+        self.assertIn("GitHub Docs page content reaches the model tier", message)
+        self.assertNotIn("non-Learn", message)
+
+    # Scanned surfaces: the gate's own message, the workflow that pastes this
+    # reasoning into every staleness issue, and this file. `.claude/plans/` is
+    # untracked and deliberately out of scope.
+    CONTAINMENT_SURFACES = (
+        REPO_ROOT / "scripts" / "validate_bot_pr.py",
+        REPO_ROOT / "tests" / "test_validate_bot_pr.py",
+        REPO_ROOT / ".github" / "workflows" / "stale-guard.yml",
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "docs" / "agent-cadence.md",
+        REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "new-row-proposal.md",
+    )
+
+    # Matched on adjacency, not co-occurrence. `[^.]` stops the match at a
+    # sentence end while still crossing newlines, because the workflow builds
+    # this sentence from two consecutive `echo` lines -- a line-scoped pattern
+    # saw neither half and would have passed vacuously. The two legitimate uses
+    # name the rejected phrase only in order to reject it, and each closes its
+    # sentence before naming the tier, so neither trips this.
+    OVERSTATED_CONTAINMENT = re.compile(r"non-Learn[^.]{0,200}?model tier", re.IGNORECASE)
+
+    def test_no_published_surface_overstates_what_the_containment_covers(self):
+        """The replaced wording, pinned so it cannot come back.
+
+        The check's own docstring already said it is "Scoped to GitHub Docs, not
+        to 'non-Learn content'" while the error message it emitted three lines
+        below claimed exactly that -- so the code documented the right scope and
+        published the wrong one. The same sentence was pasted into every
+        staleness issue by `stale-guard.yml`.
+        """
+        for path in self.CONTAINMENT_SURFACES:
+            with self.subTest(document=path.name):
+                found = self.OVERSTATED_CONTAINMENT.search(
+                    path.read_text(encoding="utf-8")
+                )
+                self.assertIsNone(
+                    found,
+                    f"{path.name} claims the containment covers non-Learn content: "
+                    f"{found.group(0) if found else ''!r}",
+                )
+
+    def test_the_guard_matches_the_wording_it_was_written_to_catch(self):
+        """A detector that matches nothing passes over everything.
+
+        The exact string that shipped, including the two-line `echo` form the
+        workflow used, so this guard is known to be load-bearing rather than
+        vacuous.
+        """
+        # Assembled at runtime rather than written out. This file is itself one
+        # of the scanned surfaces, so a literal fixture would be caught by the
+        # very guard it exists to exercise -- which is exactly what happened on
+        # the first run, along with the comment written to explain the pattern.
+        banned = "non-" + "Learn"
+        shipped_inline = (
+            f"so no automated run fetches it and no {banned} page content "
+            "reaches the model tier. Move the entry."
+        )
+        shipped_across_echoes = (
+            f'echo "path **by design**, so that no {banned} page content reaches"\n'
+            'echo "the model tier. In every case their staleness means a human is"'
+        )
+        for sample in (shipped_inline, shipped_across_echoes):
+            with self.subTest(sample=sample[:40]):
+                self.assertIsNotNone(self.OVERSTATED_CONTAINMENT.search(sample))
 
 
 class PublishedTestCountTests(unittest.TestCase):

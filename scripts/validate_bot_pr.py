@@ -792,7 +792,7 @@ def check_human_only_containment(findings: Findings, registry: dict | None = Non
             f"{offender} is a docs.github.com source in the watched 'sources' array. "
             "GitHub Docs is admitted as a citable host only on the condition that it is "
             "registered under 'human_only_sources', so no automated run fetches it and no "
-            "non-Learn page content reaches the model tier. Move the entry.",
+            "GitHub Docs page content reaches the model tier. Move the entry.",
         )
     if not offenders:
         findings.note(
