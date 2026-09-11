@@ -1167,17 +1167,52 @@ class DeferralNotifiesTests(unittest.TestCase):
     """
 
     WORKFLOW = REPO_ROOT / ".github" / "workflows" / "monthly-refresh.yml"
+    STEP_NAME = "Tell a human the monthly consolidation is waiting for them"
 
-    def executable(self) -> str:
-        return CoverageSignalWiringTests.executable_yaml(
+    def deferral_step(self) -> str:
+        """Just this step, comments removed.
+
+        **Scoped to the step, and the scoping was earned.** The first version of
+        these tests asserted over the whole file, and the break test -- delete
+        the step, keep the comment introducing it -- showed two of six passing
+        anyway: this workflow already runs `scripts/stale_guard.py` in *Report
+        residual staleness after the refresh* and already writes to
+        `GITHUB_STEP_SUMMARY` in *Flag coverage loss in the watched signal*, so
+        both assertions were satisfied by unrelated steps. A test that passes
+        over the absence of the thing it names is the defect class this file
+        exists to catch, reproduced inside the fix for it.
+        """
+        text = CoverageSignalWiringTests.executable_yaml(
             self.WORKFLOW.read_text(encoding="utf-8")
+        )
+        lines = text.splitlines()
+        start = None
+        for index, line in enumerate(lines):
+            if line.strip() == f"- name: {self.STEP_NAME}":
+                start = index
+                break
+        if start is None:
+            return ""
+        indent = len(lines[start]) - len(lines[start].lstrip())
+        for end in range(start + 1, len(lines)):
+            stripped = lines[end].strip()
+            if not stripped:
+                continue
+            if (len(lines[end]) - len(lines[end].lstrip())) <= indent and stripped.startswith("- "):
+                return "\n".join(lines[start:end])
+        return "\n".join(lines[start:])
+
+    def test_the_step_is_present_at_all(self):
+        """Everything below reads an empty string if it is not, so say it once."""
+        self.assertTrue(
+            self.deferral_step(), f"monthly-refresh.yml has no step named {self.STEP_NAME!r}"
         )
 
     def test_the_deferral_opens_or_updates_an_issue(self):
-        text = self.executable()
+        step = self.deferral_step()
         for command in ("gh issue create", "gh issue edit", "gh issue comment"):
             with self.subTest(command=command):
-                self.assertIn(command, text)
+                self.assertIn(command, step)
 
     def test_the_deferral_still_writes_the_step_summary(self):
         """The issue is an addition, not a replacement.
@@ -1185,11 +1220,11 @@ class DeferralNotifiesTests(unittest.TestCase):
         The run log stays the place the full detail lives, and losing it while
         gaining a notification would be a trade, not a fix.
         """
-        self.assertIn("GITHUB_STEP_SUMMARY", self.executable())
+        self.assertIn("GITHUB_STEP_SUMMARY", self.deferral_step())
 
     def test_the_deferral_can_authenticate(self):
         """`issues: write` without a token is a step that fails at the last line."""
-        self.assertIn("GH_TOKEN", self.executable())
+        self.assertIn("GH_TOKEN", self.deferral_step())
 
     def test_the_body_is_written_outside_the_checkout(self):
         """A scratch file in the checkout is one `git add -A` from being committed.
@@ -1199,10 +1234,10 @@ class DeferralNotifiesTests(unittest.TestCase):
         to run `git *`. `RUNNER_TEMP` is discarded with the runner and cannot be
         staged, which is why `source-watch.yml` already writes its bundle there.
         """
-        text = self.executable()
-        self.assertIn("${RUNNER_TEMP}/deferral.md", text)
-        self.assertNotIn("> deferral.md", text)
-        self.assertNotIn("--body-file deferral.md", text)
+        step = self.deferral_step()
+        self.assertIn("${RUNNER_TEMP}/deferral.md", step)
+        self.assertNotIn("> deferral.md", step)
+        self.assertNotIn("--body-file deferral.md", step)
 
     def test_the_issue_title_is_fixed_so_the_lookup_can_find_it(self):
         """A title carrying the month would open a new issue every cycle.
@@ -1212,12 +1247,22 @@ class DeferralNotifiesTests(unittest.TestCase):
         issue a month whether or not anyone acted. The month goes in the body,
         which is rewritten in place.
         """
-        text = self.executable()
-        self.assertIn("TITLE: 'Monthly consolidation is waiting on a human'", text)
+        self.assertIn(
+            "TITLE: 'Monthly consolidation is waiting on a human'", self.deferral_step()
+        )
 
     def test_the_deferral_reports_the_remaining_runway(self):
         """A reminder that does not say how long you have is half a reminder."""
-        self.assertIn("scripts/stale_guard.py", self.executable())
+        self.assertIn("scripts/stale_guard.py", self.deferral_step())
+
+    def test_the_deferral_runs_only_when_the_credential_is_absent(self):
+        """It must not fire on a month the automated tier actually ran.
+
+        An issue saying "waiting on a human" filed on a run that just opened a
+        refresh pull request would be false on arrival, and false reminders are
+        how a person learns to ignore true ones.
+        """
+        self.assertIn("if: steps.creds.outputs.present != 'true'", self.deferral_step())
 
 
 class CommittedBaselineInvariantTests(unittest.TestCase):
