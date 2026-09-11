@@ -1235,6 +1235,17 @@ def claim_keys(entry: dict) -> list[tuple[str, str]]:
     return keys
 
 
+def table_order(item: tuple[str, str]) -> tuple[int, str]:
+    """Sort matrix rows 1, 2, ... 13 rather than 1, 10, 11, 12, 13, 2.
+
+    Cosmetic, and worth it: these lines are pasted into a refresh pull request
+    body and read by a human checking that every row they advanced is accounted
+    for. A list that jumps from 1 to 10 invites a miscount.
+    """
+    identifier = item[0]
+    return (int(identifier), "") if identifier.isdigit() else (2**31, identifier)
+
+
 def parse_iso_day(value: str | None) -> date | None:
     """A calendar date from an ISO date or timestamp, or None if it is neither.
 
@@ -1359,8 +1370,14 @@ def check_date_corroboration(
                 f"{CORROBORATED_TARGETS[kind]} in the working tree, so no date was "
                 "compared. This check cannot be reported as clean.",
             )
-            return
-        for identifier, iso in sorted(after.items()):
+            # `continue`, not `return`: one fault must not hide another. An
+            # unparseable matrix used to stop this loop before the cross-walk
+            # was looked at, so a maintainer would fix the table, re-run, and
+            # only then learn about an uncorroborated framework row. The same
+            # masking `check_matrix` avoids by reporting every column fault in
+            # one pass.
+            continue
+        for identifier, iso in sorted(after.items(), key=table_order):
             new_day = parse_iso_day(iso)
             if new_day is None:
                 findings.error(

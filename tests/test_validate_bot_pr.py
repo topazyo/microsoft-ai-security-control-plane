@@ -1476,6 +1476,42 @@ class DateCorroborationTests(unittest.TestCase):
         self.assertEqual(findings.errors, [])
         self.assertIn("skipped (no base ref supplied)", "\n".join(findings.notes))
 
+    def test_an_unparseable_matrix_does_not_hide_a_crosswalk_finding(self):
+        """One fault must not mask another.
+
+        The first version returned on the first unreadable table, so a broken
+        matrix would have stopped the cross-walk from being looked at at all --
+        fix the table, re-run, and only then learn a framework row advanced with
+        nothing behind it.
+        """
+        findings = validate.Findings()
+        validate.check_date_corroboration(
+            "origin/main",
+            findings,
+            True,
+            before_texts={
+                "matrix row": self.matrix("2026-10-01"),
+                "cross-walk row": self.crosswalk("2026-10-01", self.EDITION_2026),
+            },
+            after_texts={
+                "matrix row": "# not a matrix\n",
+                "cross-walk row": self.crosswalk("2026-10-06", self.EDITION_2026),
+            },
+            registry=self.registry(),
+            fingerprints=self.fingerprints("2026-09-01T09:00:00Z"),
+        )
+        message = "\n".join(findings.errors)
+        self.assertIn("cannot be reported as clean", message)
+        self.assertIn("cross-walk row Example Framework", message)
+
+    def test_matrix_rows_are_reported_in_numeric_order(self):
+        """These lines are pasted into a refresh pull request and counted by eye."""
+        pairs = [("10", "x"), ("2", "x"), ("1", "x"), ("MITRE ATLAS", "x")]
+        self.assertEqual(
+            [key for key, _ in sorted(pairs, key=validate.table_order)],
+            ["1", "2", "10", "MITRE ATLAS"],
+        )
+
     def test_main_actually_calls_the_check(self):
         """Wiring, not behaviour — and the gap every test above would miss.
 
