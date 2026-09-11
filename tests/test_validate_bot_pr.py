@@ -25,6 +25,7 @@ longer had.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import re
 import sys
 import unittest
@@ -1074,6 +1075,429 @@ class HumanOnlyContainmentTests(unittest.TestCase):
         for sample in (shipped_inline, shipped_across_echoes):
             with self.subTest(sample=sample[:40]):
                 self.assertIsNotNone(self.OVERSTATED_CONTAINMENT.search(sample))
+
+
+class SharedTableParserTests(unittest.TestCase):
+    """The two scripts must name a dated item the same way.
+
+    `check_date_corroboration` joins three files on one key: the cross-walk row
+    name as `stale_guard.parse_table_dates` reads it, as `crosswalk_row_names`
+    validates it, and as `sources.json` spells it. The cost of those drifting is
+    already on record -- a blank line inside the table once left one parser
+    seeing a single row while the other saw four, and three valid registry
+    entries were reported as claiming rows that "do not exist".
+
+    So the parser is now imported rather than reimplemented, and this asserts
+    the two still agree on the committed files. It is deliberately run against
+    the live cross-walk: a fixture would prove the parsers agree about a
+    fixture.
+    """
+
+    CROSSWALK = REPO_ROOT / "crosswalk" / "framework-crosswalk.md"
+    MATRIX = REPO_ROOT / "matrix" / "capability-status-matrix.md"
+
+    def test_validate_imports_the_guards_parser_rather_than_copying_it(self):
+        """A copy would pass this file's tests and drift in production.
+
+        Identity of the function object is not the assertion, and cannot be:
+        `load_sibling_script` deliberately execs a fresh module rather than
+        reusing a `sys.modules` entry, so every load yields a different object
+        for the same source. What must hold is that the code being run comes
+        out of `scripts/stale_guard.py` -- a reimplementation inside
+        `validate_bot_pr.py` would report this file instead.
+        """
+        expected = str(REPO_ROOT / "scripts" / "stale_guard.py")
+        self.assertEqual(
+            validate.stale_guard.parse_table_dates.__code__.co_filename, expected
+        )
+
+    def test_both_parsers_see_the_same_crosswalk_rows(self):
+        text = self.CROSSWALK.read_text(encoding="utf-8")
+        from_guard = {
+            identifier + validate.CROSSWALK_ROW_SUFFIX
+            for identifier, _ in validate.stale_guard.parse_table_dates(
+                text, validate.LAST_VERIFIED_COLUMN
+            )
+        }
+        self.assertTrue(from_guard, "the guard's parser read no cross-walk row")
+        self.assertEqual(from_guard, validate.crosswalk_row_names(text))
+
+    def test_both_parsers_see_the_same_matrix_rows(self):
+        text = self.MATRIX.read_text(encoding="utf-8")
+        from_guard = {
+            identifier
+            for identifier, _ in validate.stale_guard.parse_table_dates(
+                text, validate.LAST_VERIFIED_COLUMN
+            )
+        }
+        self.assertTrue(from_guard, "the guard's parser read no matrix row")
+        self.assertEqual(from_guard, {str(row) for row in validate.matrix_row_ids(text)})
+
+    def test_the_edition_column_is_readable_on_the_committed_crosswalk(self):
+        """R-c reads a column by name; an unresolvable name is a silent miss."""
+        header = validate.framework_versions_header(
+            self.CROSSWALK.read_text(encoding="utf-8")
+        )
+        self.assertIn(validate.EDITION_COLUMN, header)
+
+
+class DateCorroborationTests(unittest.TestCase):
+    """Fixtures, because the states this must catch are states the tree never has.
+
+    Every scenario below is a matrix or cross-walk whose last-verified date
+    moved forward with some particular corroboration available or missing. The
+    committed tree must never be in most of them, so they are injected through
+    the same seams `check_matrix` and `check_escalation_direction` use.
+    """
+
+    CROSS_ROW = "Example Framework"
+    MATRIX_HEADER = "| # | Capability | Status | Primary source | Last verified |"
+    MATRIX_DIVIDER = "|---|---|---|---|---|"
+    CROSS_HEADER = "| Framework | Version / edition cited | Primary source | Last verified |"
+    CROSS_DIVIDER = "|---|---|---|---|"
+    EDITION_2026 = "**2026 edition (v1.0)**"
+    NO_EDITION_YEAR = "dataset, dist v5.6.0"
+
+    def matrix(self, date_cell: str) -> str:
+        return "\n".join(
+            [
+                self.MATRIX_HEADER,
+                self.MATRIX_DIVIDER,
+                f"| 1 | Thing | **GA** | https://learn.microsoft.com/x | {date_cell} |",
+                "",
+            ]
+        )
+
+    def crosswalk(self, date_cell: str, edition: str) -> str:
+        return "\n".join(
+            [
+                "## Framework versions cited",
+                "",
+                self.CROSS_HEADER,
+                self.CROSS_DIVIDER,
+                f"| {self.CROSS_ROW} | {edition} | https://learn.microsoft.com/y | {date_cell} |",
+                "",
+            ]
+        )
+
+    def registry(self) -> dict:
+        return {
+            "sources": [
+                {"id": "watched-one", "matrix_rows": [1]},
+                {
+                    "id": "version-one",
+                    "mode": "version",
+                    "crosswalk_rows": [self.CROSS_ROW + validate.CROSSWALK_ROW_SUFFIX],
+                },
+            ],
+            "human_only_sources": [],
+        }
+
+    def fingerprints(self, checked_at: str, ok: bool = True, versions=("LLM01:2026",)) -> dict:
+        return {
+            "sources": {
+                "watched-one": {"ok": ok, "checked_at": checked_at},
+                "version-one": {
+                    "ok": ok,
+                    "checked_at": checked_at,
+                    "signals": {"versions": list(versions)},
+                },
+            }
+        }
+
+    def run_check(
+        self,
+        before_matrix: str = "2026-10-01",
+        after_matrix: str = "2026-10-01",
+        before_cross: str = "2026-10-01",
+        after_cross: str = "2026-10-01",
+        edition: str = EDITION_2026,
+        registry: dict | None = None,
+        fingerprints: dict | None = None,
+        evidence: dict | None = None,
+        bot: bool = True,
+    ) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_date_corroboration(
+            "origin/main",
+            findings,
+            bot,
+            before_texts={
+                "matrix row": self.matrix(before_matrix),
+                "cross-walk row": self.crosswalk(before_cross, edition),
+            },
+            after_texts={
+                "matrix row": self.matrix(after_matrix),
+                "cross-walk row": self.crosswalk(after_cross, edition),
+            },
+            registry=self.registry() if registry is None else registry,
+            fingerprints=(
+                self.fingerprints("2026-10-06T09:00:00Z") if fingerprints is None else fingerprints
+            ),
+            evidence=evidence,
+        )
+        return findings
+
+    def joined(self, findings) -> str:
+        return "\n".join(findings.errors + findings.notes)
+
+    # -- nothing moved ----------------------------------------------------
+
+    def test_an_unchanged_date_is_not_corroborated_or_flagged(self):
+        findings = self.run_check()
+        self.assertEqual(findings.errors, [])
+        self.assertIn("nothing to corroborate", self.joined(findings))
+
+    def test_a_date_that_moves_backwards_is_not_treated_as_an_advance(self):
+        """Only forward movement claims a fresh verification."""
+        findings = self.run_check(before_matrix="2026-10-06", after_matrix="2026-10-01")
+        self.assertEqual(findings.errors, [])
+        self.assertIn("nothing to corroborate", self.joined(findings))
+
+    # -- R-b: the fetch ---------------------------------------------------
+
+    def test_a_fetch_on_the_stamped_day_corroborates(self):
+        findings = self.run_check(after_matrix="2026-10-06")
+        self.assertEqual(findings.errors, [])
+        message = self.joined(findings)
+        self.assertIn("R-a corroborated", message)
+        self.assertIn("R-b corroborated", message)
+        self.assertIn("all 1 advanced date(s) corroborated", message)
+
+    def test_a_fetch_on_the_previous_day_corroborates(self):
+        """The fetch and the commit may fall either side of a UTC midnight."""
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints=self.fingerprints("2026-10-05T23:50:00Z"),
+        )
+        self.assertEqual(findings.errors, [])
+        self.assertIn("R-b corroborated", self.joined(findings))
+
+    def test_a_fetch_the_day_after_the_stamp_does_not_corroborate(self):
+        """The tolerance is one-sided, and this is the shape that made it so.
+
+        Every `checked_at` in the committed fingerprints once read a day *after*
+        the rows they are supposed to back, because the re-baseline was a
+        separate commit from the refresh. A later fetch is a different run than
+        the one the stamp claims, so it is not evidence for it.
+        """
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints=self.fingerprints("2026-10-07T09:00:00Z"),
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("R-b contradicted", self.joined(findings))
+
+    def test_a_stale_fetch_does_not_corroborate(self):
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints=self.fingerprints("2026-09-10T15:07:07Z"),
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("last fetched 2026-09-10", self.joined(findings))
+
+    def test_a_failed_fetch_does_not_corroborate(self):
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints=self.fingerprints("2026-10-06T09:00:00Z", ok=False),
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("ok=False", self.joined(findings))
+
+    def test_a_missing_fetch_record_is_contradiction_not_not_applicable(self):
+        """An unparsed input is never corroboration, and never a shrug either."""
+        findings = self.run_check(after_matrix="2026-10-06", fingerprints={"sources": {}})
+        self.assertTrue(findings.errors)
+        message = self.joined(findings)
+        self.assertIn("R-b contradicted", message)
+        self.assertIn("no fetch record", message)
+
+    def test_an_unreadable_checked_at_is_contradiction_not_corroboration(self):
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints={"sources": {"watched-one": {"ok": True, "checked_at": "last Tuesday"}}},
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("unreadable checked_at", self.joined(findings))
+
+    def test_the_evidence_bundle_corroborates_when_the_baseline_is_stale(self):
+        """The documented local run does not update the baseline.
+
+        Without this the check would flag every row of its own first refresh:
+        `docs/agent-cadence.md` runs the watcher without `--update-baseline`, so
+        the committed `checked_at` is the previous baseline's by construction.
+        """
+        findings = self.run_check(
+            after_matrix="2026-10-06",
+            fingerprints=self.fingerprints("2026-09-10T15:07:07Z"),
+            evidence=self.fingerprints("2026-10-06T06:30:00Z"),
+        )
+        self.assertEqual(findings.errors, [])
+        message = self.joined(findings)
+        self.assertIn("R-b corroborated", message)
+        self.assertIn("evidence bundle", message)
+
+    # -- R-a: who can corroborate at all ----------------------------------
+
+    def test_a_human_only_row_that_advances_is_contradicted(self):
+        registry = {
+            "sources": [],
+            "human_only_sources": [{"id": "github-docs-page", "matrix_rows": [1]}],
+        }
+        findings = self.run_check(after_matrix="2026-10-06", registry=registry)
+        self.assertTrue(findings.errors)
+        message = self.joined(findings)
+        self.assertIn("R-a contradicted", message)
+        self.assertIn("github-docs-page", message)
+        self.assertIn("R-b not applicable", message)
+
+    def test_an_unclaimed_row_that_advances_is_contradicted(self):
+        registry = {"sources": [], "human_only_sources": []}
+        findings = self.run_check(after_matrix="2026-10-06", registry=registry)
+        self.assertTrue(findings.errors)
+        self.assertIn("no registry entry claims this row", self.joined(findings))
+
+    def test_a_human_gets_a_note_where_an_automated_run_gets_an_error(self):
+        """Rows 12 and 13 advance exactly this way, and must keep being able to."""
+        registry = {
+            "sources": [],
+            "human_only_sources": [{"id": "github-docs-page", "matrix_rows": [1]}],
+        }
+        findings = self.run_check(after_matrix="2026-10-06", registry=registry, bot=False)
+        self.assertEqual(findings.errors, [])
+        self.assertIn("R-a contradicted", self.joined(findings))
+
+    # -- R-c: the cited edition -------------------------------------------
+
+    def test_a_cited_edition_present_in_the_captured_tokens_corroborates(self):
+        findings = self.run_check(after_cross="2026-10-06")
+        self.assertEqual(findings.errors, [])
+        self.assertIn("R-c corroborated", self.joined(findings))
+
+    def test_a_cited_edition_absent_from_the_captured_tokens_is_contradicted(self):
+        """The real OWASP lag: the row cites 2026 while the watched page serves 2025."""
+        findings = self.run_check(
+            after_cross="2026-10-06",
+            fingerprints=self.fingerprints("2026-10-06T09:00:00Z", versions=("LLM01:2025",)),
+        )
+        self.assertTrue(findings.errors)
+        message = self.joined(findings)
+        self.assertIn("R-c contradicted", message)
+        self.assertIn("2026", message)
+
+    def test_a_row_stating_no_edition_year_says_so_rather_than_nothing(self):
+        """MITRE, NIST and CSA all land here, and silence would read as a pass."""
+        findings = self.run_check(after_cross="2026-10-06", edition=self.NO_EDITION_YEAR)
+        self.assertEqual(findings.errors, [])
+        self.assertIn("R-c not applicable (no edition year stated", self.joined(findings))
+
+    def test_an_unreadable_versions_signal_is_contradiction_not_a_pass(self):
+        findings = self.run_check(
+            after_cross="2026-10-06",
+            fingerprints={
+                "sources": {"version-one": {"ok": True, "checked_at": "2026-10-06T09:00:00Z"}}
+            },
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("no readable `signals.versions`", self.joined(findings))
+
+    def test_a_matrix_row_reports_r_c_as_not_applicable_with_its_reason(self):
+        findings = self.run_check(after_matrix="2026-10-06")
+        self.assertIn(
+            "R-c not applicable (not a cross-walk row backed by a version-mode source)",
+            self.joined(findings),
+        )
+
+    # -- structural failures are errors in both modes ----------------------
+
+    def test_an_unparseable_working_tree_table_is_an_error_not_a_pass(self):
+        findings = validate.Findings()
+        validate.check_date_corroboration(
+            "origin/main",
+            findings,
+            False,
+            before_texts={
+                "matrix row": self.matrix("2026-10-01"),
+                "cross-walk row": self.crosswalk("2026-10-01", self.EDITION_2026),
+            },
+            after_texts={"matrix row": "# not a matrix\n", "cross-walk row": "# neither\n"},
+            registry=self.registry(),
+            fingerprints=self.fingerprints("2026-10-06T09:00:00Z"),
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("cannot be reported as clean", "\n".join(findings.errors))
+
+    def test_an_unreadable_date_at_the_base_ref_is_an_error(self):
+        """`ISO_DATE` matches 2026-13-45 at the base ref; nothing can compare it.
+
+        Deliberately an impossible date rather than free text. A cell reading
+        "sometime" yields no entry from `parse_table_dates` at all, so the row
+        looks *absent* at the base -- the case below -- and only a regex-valid
+        but non-calendar date reaches this branch.
+        """
+        findings = self.run_check(before_matrix="2026-13-45", after_matrix="2026-10-06", bot=False)
+        self.assertTrue(findings.errors)
+        self.assertIn("unreadable date at the base ref", "\n".join(findings.errors))
+
+    def test_a_row_with_no_readable_date_at_the_base_ref_still_needs_corroboration(self):
+        """Absent at the base is treated as a fresh stamp, not as unchanged.
+
+        The conservative direction: a row whose date cell could not be read
+        before and carries one now is asserting a verification, and asserting it
+        from a state nobody could compare against.
+        """
+        findings = self.run_check(before_matrix="not a date", after_matrix="2026-10-06")
+        self.assertEqual(findings.errors, [])
+        self.assertIn("matrix row 1 → 2026-10-06", self.joined(findings))
+
+    def test_an_impossible_date_in_the_working_tree_is_an_error(self):
+        """`ISO_DATE` accepts 2026-13-45; `date.fromisoformat` does not."""
+        findings = self.run_check(after_matrix="2026-13-45", bot=False)
+        self.assertTrue(findings.errors)
+        self.assertIn("not a calendar date", "\n".join(findings.errors))
+
+    def test_an_empty_registry_contradicts_rather_than_passing_vacuously(self):
+        """A registry that claims nothing must not read as "nothing to check".
+
+        This is the shape every fail-open in this file has taken: an empty
+        collection iterated zero times, no violation counted, and a reassuring
+        note printed over a comparison that never happened.
+        """
+        findings = self.run_check(
+            after_matrix="2026-10-06", registry={"sources": [], "human_only_sources": []}
+        )
+        self.assertTrue(findings.errors)
+        self.assertIn("no registry entry claims this row", "\n".join(findings.errors))
+        self.assertEqual([n for n in findings.notes if "corroborated" in n], [])
+
+    def test_no_base_ref_is_reported_as_skipped_rather_than_clean(self):
+        findings = validate.Findings()
+        validate.check_date_corroboration(None, findings, True)
+        self.assertEqual(findings.errors, [])
+        self.assertIn("skipped (no base ref supplied)", "\n".join(findings.notes))
+
+    def test_main_actually_calls_the_check(self):
+        """Wiring, not behaviour — and the gap every test above would miss.
+
+        Each scenario here calls `check_date_corroboration` directly. Delete the
+        one line in `main()` that invokes it and all of them still pass while the
+        gate does nothing, which is the present-but-unreachable shape this file
+        keeps finding elsewhere. Asserting the evidence path is passed too: the
+        check silently degrades to the committed fingerprints without it.
+        """
+        source = inspect.getsource(validate.main)
+        self.assertIn("check_date_corroboration(", source)
+        self.assertIn("args.evidence", source.split("check_date_corroboration(")[1][:120])
+
+    def test_every_advanced_row_reports_all_three_rules(self):
+        """Three outcomes, three rules, every time -- never two."""
+        findings = self.run_check(after_matrix="2026-10-06", after_cross="2026-10-06")
+        for line in findings.notes + findings.errors:
+            if "→" not in line:
+                continue
+            for rule in ("R-a", "R-b", "R-c"):
+                with self.subTest(line=line[:60], rule=rule):
+                    self.assertIn(rule, line)
 
 
 class PublishedTestCountTests(unittest.TestCase):
