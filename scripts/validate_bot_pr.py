@@ -35,6 +35,13 @@ Checks
                            count rather than trust the sentence; the instruction
                            worked and the number drifted anyway, twice. A count
                            in prose is a claim, and claims here are checked.
+10. human-only containment — a `docs.github.com` source may be registered under
+                           `human_only_sources` only, never under `sources`, so
+                           no automated run fetches it and no GitHub Docs page
+                           content reaches the model tier. This is the condition
+                           on which ALLOWED_SOURCE_HOSTS admits the host at all,
+                           and it was published to contributors as a guarantee
+                           while nothing enforced it.
 
 Exit code 0 = all checks pass. Non-zero = at least one violation.
 """
@@ -52,6 +59,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MATRIX = REPO_ROOT / "matrix" / "capability-status-matrix.md"
 REGISTRY = REPO_ROOT / ".github" / "watch-state" / "sources.json"
 CADENCE_DOC = REPO_ROOT / "docs" / "agent-cadence.md"
+CROSSWALK = REPO_ROOT / "crosswalk" / "framework-crosswalk.md"
+
+# A source that backs a cross-walk row names it as the framework's own name in
+# the "Framework versions cited" table plus this suffix. That was a convention
+# held in four registry entries and written down nowhere, so there was nothing
+# for a claim to be wrong against. It is written once, here, and enforced.
+CROSSWALK_ROW_SUFFIX = " framework-versions row"
 
 LEGEND_LABELS = {
     "GA",
@@ -69,17 +83,24 @@ PATH_ALLOWLIST = [
     re.compile(r"^\.github/watch-state/.*\.json$"),
 ]
 
+# Named once so the citation allowlist and the containment gate cannot drift
+# apart: the second is the condition on which the first admits this host.
+GITHUB_DOCS_HOST = re.compile(r"^https://docs\.github\.com/", re.IGNORECASE)
+
 ALLOWED_SOURCE_HOSTS = [
     re.compile(r"^https://learn\.microsoft\.com/", re.IGNORECASE),
     re.compile(r"^https://(www\.)?microsoft\.com/[^ )]*microsoft-365/roadmap", re.IGNORECASE),
     # GitHub Docs is the first-party documentation site for a Microsoft-owned
     # product, so it is the same *class* of source as Microsoft Learn — not a
-    # relaxation toward blogs. It is admitted on one condition, enforced by
-    # convention in sources.json rather than here: a docs.github.com source is
-    # registered under `human_only_sources`, never under `sources`, so the
-    # watcher never fetches it and no GitHub page content ever reaches the
-    # adjudicator. See docs/agent-cadence.md.
-    re.compile(r"^https://docs\.github\.com/", re.IGNORECASE),
+    # relaxation toward blogs. It is admitted on one condition, and that
+    # condition is now a gate rather than a convention: a docs.github.com source
+    # is registered under `human_only_sources`, never under `sources`, so the
+    # watcher never fetches it and no GitHub *Docs* page content reaches the
+    # adjudicator. Not "no GitHub content": four watched entries fetch Markdown
+    # from raw.githubusercontent.com, which is the MicrosoftDocs source for
+    # pages Learn renders. `check_human_only_containment` enforces this. See
+    # docs/agent-cadence.md.
+    GITHUB_DOCS_HOST,
 ]
 
 URL_PATTERN = re.compile(r"https?://[^\s)\]<>\"']+")
@@ -87,9 +108,20 @@ URL_PATTERN = re.compile(r"https?://[^\s)\]<>\"']+")
 CONFIDENTIALITY_PATTERNS = [
     ("GUID", re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)),
     ("email address", re.compile(r"\b[\w.+-]+@(?!example\.)[\w-]+\.[A-Za-z]{2,}\b")),
-    ("IPv4 address", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    # Octets constrained to 0-255, so a four-part number that cannot be an
+    # address is not reported as one.
+    ("IPv4 address", re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b")),
     ("onmicrosoft.com tenant", re.compile(r"\b[\w-]+\.onmicrosoft\.com\b", re.IGNORECASE)),
 ]
+
+# Suffixes `check_confidentiality` reads. `.ps1` and `.yml` were added when
+# `.claude/**` entered the workflow's path filters: the tracked PowerShell hooks
+# and the workflow definitions are executable influence surfaces, and a
+# hooks-only pull request otherwise produced a green `Validate matrix` that had
+# read nothing at all — a present-but-vacuous check, which reads as validation
+# exactly the way an absent one reads as green. The patterns below are
+# content-agnostic, so widening the set costs nothing but coverage.
+SCANNED_SUFFIXES = {".md", ".json", ".ps1", ".yml"}
 
 # Out-of-scope content markers per the README's out-of-scope list.
 OUT_OF_SCOPE_PATTERNS = [
@@ -108,6 +140,57 @@ class Findings:
 
     def note(self, message: str) -> None:
         self.notes.append(f"[ok]   {message}")
+
+
+# The content an automated run is allowed to touch, as plain paths. Kept beside
+# PATH_ALLOWLIST, which is the same set as regexes; this form is what git takes
+# as a pathspec.
+GOVERNED_PATHS = [
+    "matrix",
+    "crosswalk",
+    "checklists",
+    "CHANGELOG.md",
+    ".github/watch-state",
+]
+
+
+def uncommitted_governed_changes() -> str | None:
+    """Uncommitted edits to content an automated change may modify.
+
+    Used to tell "the automated run correctly wrote nothing" apart from "the
+    automated run wrote something and never committed it". Only the second is a
+    failure, and only the second is invisible to a diff against the base ref.
+
+    **Scoped to `GOVERNED_PATHS`, and the scoping is the whole point.** An
+    unscoped `git status --porcelain` reports untracked files too, and both bot
+    workflows leave an untracked `evidence/` directory inside the checkout --
+    `--evidence-out evidence/evidence.json` in the monthly refresh, and the
+    downloaded artifact in the source watch -- neither of which is gitignored.
+    So the unscoped form was dirty on every single run, which would have failed
+    exactly the correct-outcome path this check exists to keep green: an
+    adjudicator that files an issue and commits nothing.
+
+    Tri-state, because "clean" and "could not look" must not be the same
+    answer. `git status` failing -- a dubious-ownership refusal, a broken index,
+    git absent from PATH -- is precisely the case where uncommitted edits would
+    be invisible to the diff AND to this probe, so answering "clean" there would
+    assert a state nobody observed. That is the pattern this file rejects
+    everywhere else.
+
+    Returns the porcelain output when something is pending, `""` when the probe
+    ran and found nothing, and None when the probe could not run.
+    """
+    try:
+        output = subprocess.run(
+            ["git", "status", "--porcelain", "--"] + GOVERNED_PATHS,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, OSError):
+        return None
+    return output.strip()
 
 
 def changed_files(base_ref: str | None) -> list[str]:
@@ -171,6 +254,46 @@ def check_paths(files: list[str], findings: Findings, bot: bool) -> None:
     ordinary maintenance, so outside --bot mode it is reported, not enforced.
     """
     if not files:
+        if bot:
+            # An empty diff under --bot has two very different causes, and
+            # treating them alike is wrong in both directions.
+            #
+            # Writing nothing is often the CORRECT automated outcome: the
+            # adjudicator's own permission table requires an issue and never a
+            # pull request for a move out of "Requires further validation", and
+            # a detected source change that turns out not to be status-relevant
+            # is also written up rather than committed. Failing those would
+            # manufacture a red daily run on the path operators most need to
+            # trust.
+            #
+            # The dangerous case is narrower: edits sitting in the working tree
+            # that were never committed. The bot workflows diff
+            # `origin/<ref>...HEAD`, which sees committed work only, while
+            # `check_escalation_direction` reads the working tree for its
+            # "after" state -- so uncommitted edits would be judged by the label
+            # gate and skipped entirely by the allowlist.
+            pending = uncommitted_governed_changes()
+            if pending is None:
+                findings.error(
+                    "path allowlist",
+                    "the diff against the base ref is empty and the working tree could not "
+                    "be inspected (`git status` failed), so it is unknown whether an "
+                    "automated change was left uncommitted. This is not a clean result.",
+                )
+            elif pending:
+                listed = ", ".join(sorted(line[3:] for line in pending.splitlines()))
+                findings.error(
+                    "path allowlist",
+                    "the diff against the base ref is empty but these governed files have "
+                    f"uncommitted changes, so the allowlist did not run over them: {listed}. "
+                    "An automated change must be committed before it is validated.",
+                )
+            else:
+                findings.note(
+                    "path allowlist: no automated change was committed and no governed file "
+                    "has uncommitted changes — nothing for the allowlist to check"
+                )
+            return
         findings.note("path allowlist: no changed files to check")
         return
     outside = [p for p in files if not any(pattern.match(p) for pattern in PATH_ALLOWLIST)]
@@ -184,11 +307,19 @@ def check_paths(files: list[str], findings: Findings, bot: bool) -> None:
             findings.note(f"path allowlist: '{path}' is outside the automated-change allowlist (human change - not enforced)")
 
 
-def check_matrix(findings: Findings) -> None:
-    if not MATRIX.exists():
-        findings.error("matrix", f"{MATRIX} not found")
-        return
-    text = MATRIX.read_text(encoding="utf-8")
+def check_matrix(findings: Findings, text: str | None = None) -> None:
+    """`text` is an injection seam for the tests.
+
+    The fail-open this guards against is a matrix state the committed tree must
+    never be in, so it cannot be exercised through the on-disk path — and
+    writing a fixture file into the repository to test a validator is worse
+    than passing the text in.
+    """
+    if text is None:
+        if not MATRIX.exists():
+            findings.error("matrix", f"{MATRIX} not found")
+            return
+        text = MATRIX.read_text(encoding="utf-8")
     indexes = column_indexes(text)
     rows = matrix_table_rows(text)
     if not rows:
@@ -199,14 +330,50 @@ def check_matrix(findings: Findings) -> None:
     verified_index = indexes.get("Last verified")
     source_index = indexes.get("Primary source")
 
+    # A renamed header cell used to disable three checks *and* print three
+    # positive notes over zero rows examined. `matrix_table_rows` locates the
+    # table by substring while `column_indexes` keys on the exact cell text, so
+    # renaming "Last verified" to "Last verified (UTC)" still found all 13 data
+    # rows and resolved no index — every check body was guarded out, every
+    # failure counter stayed 0, and the run reported "all 13 row(s)" for each.
+    # A check that could not run is an error; it is never a pass.
+    missing = [
+        name
+        for name, index in (
+            ("Status", status_index),
+            ("Last verified", verified_index),
+            ("Primary source", source_index),
+        )
+        if index is None
+    ]
+    for name in missing:
+        findings.error(
+            "matrix",
+            f"header column '{name}' not found in the capability table, so the checks keyed "
+            f"on it did not run. Header cells read {sorted(indexes)}; the keys are matched "
+            "exactly, so a reworded column must be renamed here too.",
+        )
+    # Deliberately no early return here. A missing header disables only the
+    # checks keyed on *that* header; the others still run. Returning would mask
+    # them, so a header rename plus a genuinely missing ISO date would surface
+    # as one error, be repaired, and only then reveal the second -- the same
+    # masking that `orphan_claims` is reported above its own early return to
+    # avoid. Nothing is at risk of reading as a pass: each missing header is
+    # already an error, and each note below additionally requires that its
+    # column resolved and that every row was examined.
+
     label_failures = 0
     date_failures = 0
     domain_failures = 0
+    label_checked = 0
+    date_checked = 0
+    domain_checked = 0
 
     for row in rows:
         identifier = row[0] if row else "?"
 
         if status_index is not None and len(row) > status_index:
+            label_checked += 1
             labels = normalise_label(row[status_index])
             asserted = [l for l in labels if l in LEGEND_LABELS]
             unknown = [l for l in labels if l not in LEGEND_LABELS and not l.startswith('"')]
@@ -222,11 +389,13 @@ def check_matrix(findings: Findings) -> None:
                     label_failures += 1
 
         if verified_index is not None and len(row) > verified_index:
+            date_checked += 1
             if not re.search(r"\b20\d{2}-\d{2}-\d{2}\b", row[verified_index]):
                 findings.error("last-verified date", f"row {identifier}: no ISO date in 'Last verified'")
                 date_failures += 1
 
         if source_index is not None and len(row) > source_index:
+            domain_checked += 1
             urls = URL_PATTERN.findall(row[source_index])
             if not urls:
                 findings.error("primary source", f"row {identifier}: no primary-source URL")
@@ -240,12 +409,32 @@ def check_matrix(findings: Findings) -> None:
                     )
                     domain_failures += 1
 
-    if not label_failures:
-        findings.note(f"status labels: all {len(rows)} row(s) use legend labels only")
-    if not date_failures:
-        findings.note(f"last-verified dates: all {len(rows)} row(s) carry an ISO date")
-    if not domain_failures:
-        findings.note(f"source domains: all {len(rows)} row(s) cite Learn, the public Roadmap or GitHub Docs")
+    # Each note names the number of rows the check actually examined, not the
+    # number of rows found. A row too short to reach a keyed column is a
+    # malformed table row, and reporting it as an error rather than skipping it
+    # is what stops "all N row(s)" from ever standing over an unexamined row.
+    for name, index, checked in (
+        ("Status", status_index, label_checked),
+        ("Last verified", verified_index, date_checked),
+        ("Primary source", source_index, domain_checked),
+    ):
+        # An unresolved column is already reported above; saying "0 of 13 rows
+        # have a cell to check" as well would be a second error for one fault.
+        if index is not None and checked != len(rows):
+            findings.error(
+                "matrix",
+                f"only {checked} of {len(rows)} capability row(s) have a '{name}' cell to "
+                "check; the rest are too short to reach that column.",
+            )
+
+    if not label_failures and status_index is not None and label_checked == len(rows):
+        findings.note(f"status labels: all {label_checked} row(s) use legend labels only")
+    if not date_failures and verified_index is not None and date_checked == len(rows):
+        findings.note(f"last-verified dates: all {date_checked} row(s) carry an ISO date")
+    if not domain_failures and source_index is not None and domain_checked == len(rows):
+        findings.note(
+            f"source domains: all {domain_checked} row(s) cite Learn, the public Roadmap or GitHub Docs"
+        )
 
 
 def citable_urls(entries: list[dict]) -> set[str]:
@@ -352,7 +541,118 @@ def claimed_crosswalk_rows(entries: list[dict]) -> set[str]:
     return {row for entry in entries for row in entry.get("crosswalk_rows", []) if isinstance(row, str)}
 
 
-def check_source_coverage(findings: Findings) -> None:
+def crosswalk_row_names(text: str) -> set[str]:
+    """Valid `crosswalk_rows` values, derived from the cross-walk itself.
+
+    The authoritative list is the first column of the "Framework versions
+    cited" table -- the same column scripts/stale_guard.py reads as that
+    table's row identifier, extracted with the same cell expression, so the
+    two scripts name a cross-walk row the same way.
+
+    Blank lines inside the table are skipped rather than treated as its end,
+    which is what `stale_guard.parse_table_dates` already does. The two parsers
+    diverging there was not harmless: a blank line after the first data row left
+    this one seeing a single name while stale_guard still saw four, so three
+    perfectly good registry entries would have been reported as claiming
+    cross-walk rows that "do not exist" -- blaming the registry for a stray line
+    in a markdown file.
+
+    Markdown emphasis is deliberately not normalised: an emphasised name would
+    also silently change stale_guard's identifier, so a red build is the right
+    outcome rather than a divergence hidden by two strippers.
+
+    An empty return is a parse failure, not "nothing to check", and the caller
+    must treat it as an error -- the same rule matrix_row_ids follows.
+    """
+    lines = text.splitlines()
+    header_index = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("|") and "Framework" in stripped and "Last verified" in stripped:
+            header_index = index
+            break
+    if header_index is None:
+        return set()
+    width = len([c for c in lines[header_index].strip().strip("|").split("|")])
+    names: set[str] = set()
+    for line in lines[header_index + 2 :]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            if stripped == "":
+                continue
+            break
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        # Same width as the header, and not a separator row. Skipping blank
+        # lines is what lets a *second* table under the same heading be read as
+        # part of this one -- markdown requires a blank line between adjacent
+        # tables -- and its `|---|---|` separator would otherwise contribute the
+        # name "--- framework-versions row". A row of the wrong table would then
+        # be a valid `crosswalk_rows` value that `stale_guard` never tracks:
+        # coverage asserted and never watched, which is the state this check
+        # exists to prevent.
+        if len(cells) != width:
+            continue
+        if all(set(c) <= set("-: ") for c in cells):
+            continue
+        if cells and cells[0]:
+            names.add(cells[0] + CROSSWALK_ROW_SUFFIX)
+    return names
+
+
+def orphan_claims(
+    entries: list[dict], array: str, rows: set[int], crosswalk_names: set[str]
+) -> list[str]:
+    """Registry claims that point at nothing -- the converse of `uncovered`.
+
+    `check_source_coverage` asked only "is every matrix row claimed?". The
+    other direction was unasked, so `"matrix_rows": [99]` on a thirteen-row
+    matrix passed every gate and exited 0. That is not cosmetic: an orphan
+    claim inflates the claimed set, so a row that is later renumbered or
+    removed leaves behind a claim that still reads as coverage -- the exact
+    failure this check exists to prevent, in the direction it did not look.
+
+    The strongest case is the quietest one: a typo of an *existing*
+    `human_only_sources` cross-walk name keeps the residue set's cardinality,
+    so the derived "N of the dated items" count stays 4 and check_doc_counts
+    stays green while the registry names a row that does not exist.
+
+    An orphan is an ERROR, not a note. There is no input on which a claim on a
+    non-existent row is legitimate, so the check has no false-positive case to
+    be lenient about, and the repair is one deleted number. A note prints on
+    every run and never changes the exit code, i.e. it is prose in a different
+    font -- and coverage asserted in prose is precisely how rows 12 and 13 sat
+    unwatched through a full release.
+
+    Member *types* are not rechecked here: `registry_problems` in
+    scripts/watch_sources.py owns them, and this function must not read the
+    matrix into that layer.
+    """
+    problems: list[str] = []
+    present = sorted(rows)
+    for entry in entries:
+        identifier = entry.get("id", "<entry with no id>")
+        for row in sorted(claimed_rows([entry])):
+            if row not in rows:
+                problems.append(
+                    f"{REGISTRY.name} entry '{identifier}' ({array}) claims matrix row {row}, "
+                    f"which {MATRIX.name} does not contain (rows present: {present}). Remove "
+                    "the claim, or add the row. An orphan claim inflates the claimed set, so a "
+                    "renumbered or deleted row keeps looking backed by a source."
+                )
+        for name in sorted(claimed_crosswalk_rows([entry])):
+            if name not in crosswalk_names:
+                problems.append(
+                    f"{REGISTRY.name} entry '{identifier}' ({array}) claims cross-walk row "
+                    f"'{name}', which is not a row of the 'Framework versions cited' table in "
+                    f"{CROSSWALK.name}. Valid values are {sorted(crosswalk_names)}. Unlike a "
+                    "matrix claim this one is not filtered anywhere downstream: it also "
+                    "inflates the human-only residue reported below and the "
+                    "'N of the dated items' count check_doc_counts re-derives."
+                )
+    return problems
+
+
+def check_source_coverage(findings: Findings, registry: dict | None = None) -> None:
     """Every matrix row must be claimed by some registry entry.
 
     `registry_problems` in scripts/watch_sources.py checks that each entry
@@ -366,8 +666,14 @@ def check_source_coverage(findings: Findings) -> None:
     breaks. That set is the invariant needed to read `stale_guard.py` output
     correctly — those rows can never be advanced by any agent run, so their
     staleness means "a human is overdue", not "the automation is failing".
+
+    Both directions are now checked. A row nothing claims is a row the cadence
+    silently does not cover; a claim on a row that does not exist is a silent
+    false assertion that it does. Both are errors, and both are reported in
+    the same run — see the ordering note below.
     """
-    registry = load_registry(findings)
+    if registry is None:
+        registry = load_registry(findings)
     if registry is None:
         return
     if not MATRIX.exists():
@@ -377,12 +683,17 @@ def check_source_coverage(findings: Findings) -> None:
     if not rows:
         findings.error("source coverage", "could not read any row identifier from the capability table")
         return
-
     watched = registry.get("sources", [])
     human_only = registry.get("human_only_sources", [])
     watched_rows = claimed_rows(watched)
     human_rows = claimed_rows(human_only)
+    row_set = set(rows)
 
+    # The matrix-row half runs first and unconditionally. It is this function's
+    # reason for existing -- rows 12 and 13 sat unclaimed through a full release
+    # -- and it needs nothing from the cross-walk, so a cross-walk parse failure
+    # must not take it down with it. Reading the cross-walk earlier and
+    # returning on failure meant exactly that.
     uncovered = [row for row in rows if row not in watched_rows | human_rows]
     for row in uncovered:
         findings.error(
@@ -391,7 +702,38 @@ def check_source_coverage(findings: Findings) -> None:
             "'matrix_rows' on the source that backs it, or to a 'human_only_sources' entry "
             "if no automation may fetch it.",
         )
-    if uncovered:
+
+    crosswalk_names: set[str] = set()
+    crosswalk_readable = True
+    if not CROSSWALK.exists():
+        findings.error("source coverage", f"{CROSSWALK} not found")
+        crosswalk_readable = False
+    else:
+        crosswalk_names = crosswalk_row_names(CROSSWALK.read_text(encoding="utf-8"))
+        if not crosswalk_names:
+            findings.error(
+                "source coverage",
+                "could not read any framework row from the 'Framework versions cited' table in "
+                f"{CROSSWALK.name}, so cross-walk claims cannot be checked against it",
+            )
+            crosswalk_readable = False
+
+    # Reported *above* the early return, deliberately. The single most likely
+    # edit that creates an orphan — renumbering a row — creates both faults at
+    # once, so if this sat below the return, masking would be the common case
+    # and the maintainer would close the gap and leave the stale claim behind.
+    #
+    # Skipped entirely when the cross-walk could not be read: with no
+    # authoritative name list every registered cross-walk claim would be
+    # reported as an orphan, blaming the registry for a defect in the document.
+    orphans: list[str] = []
+    if crosswalk_readable:
+        orphans = orphan_claims(watched, "sources", row_set, crosswalk_names)
+        orphans += orphan_claims(human_only, "human_only_sources", row_set, crosswalk_names)
+    for problem in orphans:
+        findings.error("source coverage", problem)
+
+    if uncovered or orphans or not crosswalk_readable:
         return
 
     human_exclusive = sorted(row for row in rows if row in human_rows and row not in watched_rows)
@@ -407,6 +749,55 @@ def check_source_coverage(findings: Findings) -> None:
         f"human-only sources and can never be advanced by an agent run — matrix row(s) "
         f"{human_exclusive or 'none'}, cross-walk row(s) {crosswalk_exclusive or 'none'}"
     )
+
+
+def check_human_only_containment(findings: Findings, registry: dict | None = None) -> None:
+    """A GitHub Docs source may be registered human-only, never watched.
+
+    This rule was published as a guarantee on two reader-facing surfaces -- the
+    README and the new-row-proposal template both tell a contributor that such a
+    source "is registered under `human_only_sources`, never under `sources`" --
+    while nothing enforced it. `ALLOWED_SOURCE_HOSTS` admits `docs.github.com`
+    for citation, and the registry note records the containment as the condition
+    of that admission, but a maintainer could move the entry into `sources` and
+    every gate would stay green.
+
+    It is worth a gate rather than a convention because of what it contains.
+    Per the registry's own reason, the page is "perfectly fetchable, and that is
+    exactly why the rule matters": admitting `docs.github.com` to the citation
+    allowlist widened what this repository may *cite*, and keeping those entries
+    out of `sources` is what stops that from also widening what an automated run
+    may *fetch and adjudicate*.
+
+    Scoped to GitHub Docs, not to "non-Learn content", because the watched array
+    is not Learn-only: four entries fetch from `raw.githubusercontent.com` (the
+    MicrosoftDocs repositories Learn renders), one from the OWASP GenAI site and
+    one from the public Microsoft 365 Roadmap. A promise that only holds while
+    everyone remembers it is the class of control this repository does not
+    accept anywhere else -- and so is one stated more broadly than it holds.
+    """
+    if registry is None:
+        registry = load_registry(findings)
+    if registry is None:
+        return
+    offenders = []
+    for entry in registry.get("sources", []):
+        for key in ("url", "cite_url"):
+            value = entry.get(key) or ""
+            if GITHUB_DOCS_HOST.match(value):
+                offenders.append(f"{entry.get('id', '<no id>')} ({key}: {value})")
+    for offender in offenders:
+        findings.error(
+            "human-only containment",
+            f"{offender} is a docs.github.com source in the watched 'sources' array. "
+            "GitHub Docs is admitted as a citable host only on the condition that it is "
+            "registered under 'human_only_sources', so no automated run fetches it and no "
+            "non-Learn page content reaches the model tier. Move the entry.",
+        )
+    if not offenders:
+        findings.note(
+            "human-only containment: no docs.github.com source is in the watched array"
+        )
 
 
 # Counts docs/agent-cadence.md states in prose, each with the way to re-derive
@@ -478,92 +869,274 @@ def check_doc_counts(findings: Findings) -> None:
         )
 
 
+# Adjacency, not a window. The first version of this allowed 12 free characters
+# after a bare `\bv`, which suppressed a genuine address after any v-initial
+# word: "VPN gateway 10.0.0.1", "the connector VM at 10.0.0.5" and "traffic via
+# 10.1.2.3" were all silently dropped from a confidentiality gate. A version
+# marker has to sit immediately before the number, separated only by the
+# punctuation a version assignment uses.
+VERSION_CONTEXT = re.compile(r"(?i)(?:(?:version|\bver)[\s=:'\"()-]{0,4}|\bv)$")
+
+
+def looks_like_a_version(text: str, start: int) -> bool:
+    """Is this four-part number a version string rather than an address?
+
+    The guard this replaces was dead code: it re-tested the match against the
+    same shape that produced it, so the `continue` was unreachable and the
+    comment described a filter that could not exclude anything. That went
+    unnoticed while only `.md` and `.json` were scanned; four-part versions are
+    idiomatic in exactly the two file types since added -- `ModuleVersion =
+    '1.0.0.0'` in PowerShell, four-part image tags in a workflow -- so a
+    dead filter would have turned ordinary content into a red confidentiality
+    gate.
+
+    Decided on the preceding text rather than the digits: `1.0.0.0` is a
+    perfectly valid address, so nothing about the number itself distinguishes
+    the two.
+
+    **The residual hole, stated exactly rather than reassuringly.** An address
+    is missed only when a version marker sits immediately before it -- after
+    `version`/`ver` with at most four characters of assignment punctuation
+    between, or after a bare `v` with nothing between. So `version 10.0.0.1`,
+    `ver=10.0.0.1` and `v10.0.0.1` are not reported. Everything else is,
+    including the cases an earlier and much wider form of this filter dropped:
+    `VPN gateway 10.0.0.1`, `the connector VM at 10.0.0.5`, `traffic via
+    10.1.2.3`. Those are pinned as negative tests, because a filter in a
+    confidentiality gate that quietly widens is worse than no filter at all.
+    """
+    return bool(VERSION_CONTEXT.search(text[max(0, start - 24) : start]))
+
+
 def check_confidentiality(files: list[str], findings: Findings) -> None:
+    """Scan the changed files this check can read, and report the scan's scope.
+
+    The note this emits used to be an unscoped absence claim: it skips any file
+    that is not in `SCANNED_SUFFIXES`, so a pull request touching only `scripts/` or
+    `tests/` or `.github/workflows/` scanned nothing and still reported "no
+    tenant-shaped identifiers or out-of-scope content found". That is the
+    standard this repository applies to its own published absence claims, so it
+    applies here: the note names how many files were read, and says plainly
+    when the answer is none.
+    """
+    # The no-diff fallback carries the two watch-state files deliberately. When
+    # the diff is empty -- a workflow_dispatch run, or a push whose base ref
+    # resolves to the pushed commit -- this list is the entire scan, and
+    # `fingerprints.json` is the file most worth scanning: it is machine-written
+    # and holds text taken verbatim from upstream pages, so it is the one place
+    # third-party content enters the repository without a human reading it.
     targets = [REPO_ROOT / f for f in files] if files else [
         REPO_ROOT / "matrix" / "capability-status-matrix.md",
         REPO_ROOT / "crosswalk" / "framework-crosswalk.md",
         REPO_ROOT / "checklists" / "capability-status-verification.md",
         REPO_ROOT / "CHANGELOG.md",
+        REPO_ROOT / ".github" / "watch-state" / "sources.json",
+        REPO_ROOT / ".github" / "watch-state" / "fingerprints.json",
     ]
     hits = 0
+    scanned: list[str] = []
+    skipped: list[str] = []
+    missing: list[str] = []
     for path in targets:
-        if not path.exists() or path.suffix not in {".md", ".json"}:
+        # POSIX spelling on every platform, so the note reads the same locally as
+        # in CI and matches the git-derived paths above.
+        relative = (
+            path.relative_to(REPO_ROOT).as_posix()
+            if path.is_relative_to(REPO_ROOT)
+            else path.as_posix()
+        )
+        if path.suffix not in SCANNED_SUFFIXES:
+            skipped.append(relative)
             continue
+        if not path.exists():
+            # A changed file that no longer exists -- a deletion, or the old side
+            # of a rename. Counted rather than dropped: the note is a scoped
+            # absence claim, so every changed file must land in exactly one
+            # bucket or `scanned + skipped` silently understates the diff.
+            missing.append(relative)
+            continue
+        scanned.append(relative)
         text = path.read_text(encoding="utf-8")
         for name, pattern in CONFIDENTIALITY_PATTERNS:
-            for match in pattern.findall(text):
-                value = match if isinstance(match, str) else match[0]
-                # Version strings such as 1.1.0 are not IPv4 addresses.
-                if name == "IPv4 address" and not re.match(r"^(\d{1,3}\.){3}\d{1,3}$", value):
+            for match in pattern.finditer(text):
+                value = match.group(0)
+                if name == "IPv4 address" and looks_like_a_version(text, match.start()):
                     continue
-                findings.error("confidentiality", f"{path.relative_to(REPO_ROOT)}: possible {name} '{value}'")
+                findings.error("confidentiality", f"{relative}: possible {name} '{value}'")
                 hits += 1
         for name, pattern in OUT_OF_SCOPE_PATTERNS:
             if pattern.search(text):
-                findings.error("scope", f"{path.relative_to(REPO_ROOT)}: contains {name}, which is out of scope")
+                findings.error("scope", f"{relative}: contains {name}, which is out of scope")
                 hits += 1
     if not hits:
-        findings.note("confidentiality and scope: no tenant-shaped identifiers or out-of-scope content found")
+        unread = ""
+        if skipped:
+            unread += (
+                f"; {len(skipped)} changed file(s) are outside this check: "
+                f"{', '.join(sorted(skipped))}"
+            )
+        if missing:
+            unread += (
+                f"; {len(missing)} changed scannable file(s) no longer exist and were "
+                f"not read: {', '.join(sorted(missing))}"
+            )
+        if not scanned:
+            findings.note(
+                "confidentiality and scope: no changed file this check can read" + unread
+            )
+        else:
+            findings.note(
+                "confidentiality and scope: no tenant-shaped identifiers or out-of-scope "
+                f"content found across {len(scanned)} file(s) ({', '.join(sorted(scanned))})"
+                + unread
+            )
 
 
-def check_escalation_direction(base_ref: str | None, findings: Findings, bot: bool) -> None:
+def check_escalation_direction(
+    base_ref: str | None,
+    findings: Findings,
+    bot: bool,
+    before_text: str | None = None,
+    after_text: str | None = None,
+) -> None:
     """A row may never be moved *out* of 'Requires further validation' automatically.
 
     A human who has completed the in-tenant verification may make exactly this
     change, so outside --bot mode the transition is reported for reviewer
     attention rather than blocked.
-    """
-    if not base_ref:
-        findings.note("escalation direction: skipped (no base ref supplied)")
-        return
-    try:
-        before = subprocess.run(
-            ["git", "show", f"{base_ref}:matrix/capability-status-matrix.md"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
-    except (subprocess.CalledProcessError, OSError):
-        findings.note("escalation direction: skipped (matrix not present at base ref)")
-        return
 
-    def labels_by_row(text: str) -> dict[str, list[str]]:
+    `before_text`/`after_text` are injection seams for the tests, matching the
+    ones on `check_matrix` and `check_source_coverage`. The states this must
+    catch are states the committed tree must never be in, so they cannot be
+    exercised through the git path.
+    """
+    if before_text is None:
+        if not base_ref:
+            findings.note("escalation direction: skipped (no base ref supplied)")
+            return
+        try:
+            before_text = subprocess.run(
+                ["git", "show", f"{base_ref}:matrix/capability-status-matrix.md"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        except (subprocess.CalledProcessError, OSError):
+            findings.note("escalation direction: skipped (matrix not present at base ref)")
+            return
+    before = before_text
+
+    def labels_by_row(text: str, side: str) -> dict[str, list[str]] | None:
+        """None means the Status column could not be resolved on this side.
+
+        Returning an empty dict instead made this check fail *open*: with no
+        Status index the loop below finds no violations and the run reports
+        "no row moved out of 'Requires further validation'". That is the
+        repository's hardest safety control asserting a clean result over a
+        comparison it never performed, and a single reworded header cell was
+        enough to do it.
+        """
         indexes = column_indexes(text)
         status_index = indexes.get("Status")
-        result: dict[str, list[str]] = {}
         if status_index is None:
-            return result
+            findings.error(
+                "escalation direction",
+                f"could not resolve the 'Status' column in the {side} matrix, so no label "
+                "comparison was made. This check cannot be reported as clean.",
+            )
+            return None
+        result: dict[str, list[str]] = {}
         for row in matrix_table_rows(text):
             if len(row) > status_index:
                 result[row[0]] = normalise_label(row[status_index])
         return result
 
-    old = labels_by_row(before)
-    new = labels_by_row(MATRIX.read_text(encoding="utf-8"))
+    old = labels_by_row(before, f"base ({base_ref})")
+    new = labels_by_row(
+        MATRIX.read_text(encoding="utf-8") if after_text is None else after_text,
+        "working-tree",
+    )
+    if old is None or new is None:
+        return
     violations = 0
+
+    def report(message: str) -> None:
+        """Hard failure for an automated run, reviewer attention for a human.
+
+        Either way it counts as a violation, so the reassuring note below cannot
+        print beside it.
+        """
+        nonlocal violations
+        violations += 1
+        if bot:
+            findings.error(
+                "escalation direction",
+                message + " An automated run may never make this change.",
+            )
+        else:
+            findings.note(
+                "escalation direction: " + message
+                + " Reviewer must confirm the in-tenant verification was actually performed."
+            )
+
     for row_id, old_labels in old.items():
-        if "Requires further validation" in old_labels:
-            new_labels = new.get(row_id, [])
-            if new_labels and "Requires further validation" not in new_labels:
-                message = (
-                    f"row {row_id} was moved out of 'Requires further validation' to {new_labels}. "
-                    "Leaving that state requires in-tenant confirmation by a human "
-                    "(docs/how-to-read-status.md)."
-                )
-                if bot:
-                    findings.error("escalation direction", message + " An automated run may never make this change.")
-                else:
-                    findings.note(
-                        "escalation direction: " + message
-                        + " Reviewer must confirm the in-tenant verification was actually performed."
-                    )
-                violations += 1
+        if "Requires further validation" not in old_labels:
+            continue
+
+        # Both of these used to be silent passes. `new.get(row_id, [])` returned
+        # an empty list and `if new_labels and ...` short-circuited, so a row
+        # that carried the label at the base and could not be found or read in
+        # the working tree left `violations` at 0 and printed "no row moved out
+        # of 'Requires further validation'". That is the same fail-open the
+        # column-resolution guard above closes, reached through the other door:
+        # renaming the identifier is enough, and `matrix_row_ids` strips
+        # non-digits, so `5` -> `5a` keeps `check_source_coverage` clean too.
+        if row_id not in new:
+            report(
+                f"row {row_id} carried 'Requires further validation' at the base ref and no "
+                "row with that identifier exists in the working-tree matrix, so its "
+                "transition could not be checked. Renaming or removing a row's identifier "
+                "must not be a way to leave that state unobserved."
+            )
+            continue
+
+        new_labels = new[row_id]
+        if not new_labels:
+            report(
+                f"row {row_id} carried 'Requires further validation' at the base ref and its "
+                "Status cell in the working-tree matrix yields no legend label, so its "
+                "transition could not be checked."
+            )
+            continue
+
+        if "Requires further validation" not in new_labels:
+            report(
+                f"row {row_id} was moved out of 'Requires further validation' to {new_labels}. "
+                "Leaving that state requires in-tenant confirmation by a human "
+                "(docs/how-to-read-status.md)."
+            )
+
     if not violations:
         findings.note("escalation direction: no row moved out of 'Requires further validation'")
 
 
+def use_utf8_streams() -> None:
+    """Print repository text without depending on the console's code page.
+
+    Findings quote cell text and URLs straight out of the tracked files, and
+    the report itself uses an em dash. cp1252 happens to carry the em dash but
+    not an arrow (U+2192), so this failed only for some content -- which is
+    worse than failing always. CI runs UTF-8 and never saw it. See
+    scripts/changelog_entry.py, where a published command was found crashing.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Deterministic validators for automated matrix changes.")
     parser.add_argument("--base-ref", default=None, help="Base git ref to diff against (e.g. origin/main).")
     parser.add_argument("--evidence", type=Path, default=None, help="Path to the watcher's evidence bundle.")
@@ -581,6 +1154,7 @@ def main() -> int:
     check_paths(files, findings, args.bot)
     check_matrix(findings)
     check_source_coverage(findings)
+    check_human_only_containment(findings)
     check_doc_counts(findings)
     check_citation_containment(args.evidence, findings)
     check_confidentiality(files, findings)

@@ -609,10 +609,13 @@ def filter_collapsed(signals: dict) -> bool:
     Not an error and not a change: the fetch succeeded and the fingerprint is
     honest about what it saw. It is the *coverage* that has gone -- the source is
     now watching only its page-level text, and every later run will call that
-    "unchanged". Observed live on `sentinel-data-connectors-reference`, whose
-    filter matched 0 of 47 headings because the connector entries on that page
-    are not headings at all; the source had appeared to be watching something
-    only because the phrase signal was, incorrectly, taken over the whole page.
+    "unchanged". Observed live on `sentinel-data-connectors-reference` in
+    September 2026, whose filter matched 0 of 47 headings -- not because a
+    heading filter cannot reach a collapsible entry, which was the original and
+    since-retracted diagnosis, but because section extraction did not then treat
+    a collapsible entry as a section. That source no longer collapses: its
+    filter now matches 2 of the page's 437 entry titles. The check stays because
+    the condition is a property of any filter, not of that page.
     """
     return bool(signals.get("relevance_filtered")) and not signals.get("heading_count")
 
@@ -914,7 +917,26 @@ def emit_github_output(**values) -> None:
             handle.write(f"{key}={value}\n")
 
 
+def use_utf8_streams() -> None:
+    """Print fetched page text without depending on the console's code page.
+
+    This one matters most of the four scripts: the `[changed]` notes and the
+    `[warn]` lines echo headings and phrases taken verbatim from live Microsoft
+    Learn pages, and a heading as ordinary as "Settings -> Privacy" contains
+    U+2192, which a cp1252 console cannot encode. The run would die with
+    UnicodeEncodeError *after* fetching, mid-report. CI runs UTF-8 so it never
+    sees this, and tiers D2 and D3 are currently operated locally, so the local
+    path is the one that actually runs. See scripts/changelog_entry.py, where a
+    published command was found crashing for exactly this reason.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Deterministic source watcher (tier D1).")
     parser.add_argument(
         "--update-baseline",

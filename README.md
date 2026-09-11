@@ -79,6 +79,11 @@ microsoft-ai-security-control-plane/
 │   ├── stale_guard.py                     # tier D4: staleness guard over the recorded last-verified dates
 │   ├── validate_bot_pr.py                 # the deterministic gate: sourcing, labelling, confidentiality
 │   └── changelog_entry.py                 # appends a refresh record in the existing format
+├── tests/                                 # standard-library unittest; `python -m unittest discover -s tests`
+│   ├── test_watch_sources.py              # signal scoping, registry shape, invariants over the committed baseline
+│   ├── test_validate_bot_pr.py            # the gates themselves, including the cases where one could not run
+│   ├── test_stale_guard.py                # the staleness arithmetic and the step-output contract CI reads
+│   └── test_changelog_entry.py            # one heading per calendar month, and the released-section protection
 └── .github/
     ├── workflows/                         # daily source watch, monthly refresh, weekly stale guard, validate gate
     ├── watch-state/                       # sources.json (pinned source registry) + fingerprints.json (baseline)
@@ -96,7 +101,7 @@ Start with [`matrix/capability-status-matrix.md`](matrix/capability-status-matri
 
 ## How rows are verified
 
-Every matrix row carries a **primary-source URL** (Microsoft Learn or the public Microsoft 365 Roadmap) and a **last-verified date** — the date the source was actually re-read. Status is taken from the source's own qualifiers, never from launch blogs. Where Microsoft's own documentation conflicts, the row is labelled **Requires further validation** rather than guessed. Methodology: [`docs/how-to-read-status.md`](docs/how-to-read-status.md).
+Every matrix row carries a **primary-source URL** — Microsoft Learn or the public Microsoft 365 Roadmap, and for the two GitHub rows (12 and 13) GitHub Docs, which is the first-party documentation site for a Microsoft-owned product and so the same *class* of source rather than a relaxation toward blogs; it is admitted only as a human-only source that no automated run may fetch — and a **last-verified date**, the date the source was actually re-read. Status is taken from the source's own qualifiers, never from launch blogs. Where Microsoft's own documentation conflicts, the row is labelled **Requires further validation** rather than guessed. Methodology: [`docs/how-to-read-status.md`](docs/how-to-read-status.md).
 
 ## Confidentiality note
 
@@ -110,7 +115,7 @@ Starting reference only — **validate every capability's status in your own env
 
 Monthly refresh against the Microsoft Learn "What's new" pages and the Message Center. Every refresh is recorded in [`CHANGELOG.md`](CHANGELOG.md) (date, rows touched, status changes). Any row older than the monthly window is treated as stale.
 
-**Which half of that refresh is automated, stated precisely because the two halves fail differently.** The automated cadence detects **drift on rows that already exist**: it fetches each row's pinned sources and reports changes in their status signals. **Finding a capability that should become a *new* row is a human step** — every watched source but one is a per-capability page, and a per-capability page can only ever speak about a row that already exists. So is the Message Center, which is tenant-scoped, has no public URL, and is never fetched by anything here. And some dated items are backed *only* by sources no automation may reach — matrix rows 12 and 13 (GitHub Docs pages, deliberately kept outside the automated path) and the NIST and CSA cross-walk rows (a static PDF and a registration-gated spreadsheet) — so no agent run can ever advance them, and their going stale means a human is overdue rather than that the automation broke. How all of this is executed, and what the automation is forbidden to do: [`docs/agent-cadence.md`](docs/agent-cadence.md).
+**Which half of that refresh is automated, stated precisely because the two halves fail differently.** The automated cadence detects **drift on rows that already exist**: it fetches each row's pinned sources and reports changes in their status signals. **Finding a capability that should become a *new* row is a human step** — the watched surface cannot be relied on for discovery. Most sources are per-capability pages, which can only ever speak about a row that already exists. The two Defender for Cloud release-notes pages are a partial exception worth stating rather than glossing: their filter is topical, so a new AI entry there *does* move the fingerprint and *is* reported — the committed baseline already holds in-scope entries no row cites. But that is one product's what's-new page and there is no Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel equivalent under watch, and a reported change is a prompt to re-adjudicate an existing row, never a proposal for a new one. Sweeping the other products' pages, and deciding that anything found deserves a row, stays with a human. So is the Message Center, which is tenant-scoped, has no public URL, and is never fetched by anything here. And some dated items are backed *only* by sources no automation may reach — matrix rows 12 and 13 (GitHub Docs pages, deliberately kept outside the automated path) and the NIST and CSA cross-walk rows (a static PDF and a registration-gated spreadsheet) — so no agent run can ever advance them, and their going stale means a human is overdue rather than that the automation broke. How all of this is executed, and what the automation is forbidden to do: [`docs/agent-cadence.md`](docs/agent-cadence.md).
 
 ## License & contributing
 

@@ -9,8 +9,11 @@
 
 - [ ] Status label is exactly one of the four legend labels: **GA** /
       **Public Preview** / **Roadmap** / **Requires further validation**
-- [ ] Primary-source URL is Microsoft Learn or the public Microsoft 365
-      Roadmap — not a launch blog, not Tech Community, not a Message Center post
+- [ ] Primary-source URL is Microsoft Learn, the public Microsoft 365 Roadmap,
+      or GitHub Docs for a GitHub capability — not a launch blog, not Tech
+      Community, not a Message Center post. A GitHub Docs source must be
+      registered under `human_only_sources`, never under `sources`; the build
+      fails otherwise
 - [ ] Last-verified date is the date the source was **actually re-read**
 - [ ] The details section carries at least one **verbatim status-bearing quote**
 - [ ] Conflicting sources are recorded as **Requires further validation**, not
@@ -35,10 +38,17 @@
 ## Validators
 
 - [ ] `python -m compileall -q scripts`
+- [ ] `python -m unittest discover -s tests` (paste the `Ran N tests` line — a
+      green *job* is not a green *step*)
 - [ ] `python scripts/validate_bot_pr.py --base-ref origin/main`
-- [ ] `python scripts/stale_guard.py` (expect **zero** stale items — any stale
-      item is a finding, not a known exception; no CI check enforces this, so
-      paste the output rather than inferring it from a green run)
+- [ ] `python scripts/stale_guard.py` — expect **exactly the documented
+      human-only residue** and nothing else: the dated items no agent run can
+      advance, listed in `checklists/capability-status-verification.md` Group 9,
+      plus the OWASP cross-walk row whose date deliberately does not advance
+      (see `crosswalk/framework-crosswalk.md`). Any item outside that list is a
+      finding, and so is one that has been overdue long enough to stop being
+      merely due. This script exits 0 either way and no CI check enforces its
+      output, so paste it rather than inferring it from a green run.
 - [ ] `Validate matrix` is green **and actually ran** — if this pull request
       touches only paths outside the workflow's filter, the check will not
       appear; paste the local validator output below instead. An absent check
@@ -47,14 +57,15 @@
 ## Confidentiality (never delete this section)
 
 The validator mechanically checks only four categories (GUID, email address,
-IPv4, `onmicrosoft.com`) and only in `.md`/`.json` files, and it never reads
+IPv4, `onmicrosoft.com`) and only in `.md`, `.json`, `.ps1` and `.yml` files
+(`SCANNED_SUFFIXES` in `scripts/validate_bot_pr.py`), and it never reads
 commit messages. The rest is on review:
 
 - [ ] No organization names
 - [ ] No license counts or tenant entitlement state — SKU/plan **names** only
 - [ ] No tenant, directory, workspace or subscription identifiers
 - [ ] No hostnames, internal URLs, or IP addresses
-- [ ] No user names or email addresses (**no literal address in any `.md`/`.json`
+- [ ] No user names or email addresses (**no literal address in any scanned
       file — it fails the build**)
 - [ ] No log excerpts or screenshots
 - [ ] No NDA or private-preview-program material

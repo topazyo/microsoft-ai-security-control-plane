@@ -188,10 +188,15 @@ Two consequences to know before reading a `[changed]` line:
   unaffected, because its phrase set is empty at either scope. Every phrase they
   lose was traced to the section holding it before this was shipped, and all of
   them sit under SQL, container, Kubernetes, multicloud or deprecated-connector
-  headings. So the first run after this change reports three sources with a
-  documented cause and no status meaning: run
-  `python3 scripts/watch_sources.py --update-baseline` and record it in
-  `CHANGELOG.md`, exactly as any adjudicated non-status change is recorded.
+  headings. That first run happened: it was adjudicated as a signal-scope
+  re-baseline and recorded in `CHANGELOG.md`, and the baseline was then
+  re-derived again by the row-9 extraction fix, which is why
+  `purview-service-description` also moved in the end — not from scoping, whose
+  effect on it was nil, but from gaining the two phrase-region fields.
+  **Do not run `--update-baseline` on the strength of this paragraph.** A
+  re-baseline follows a plain detection run whose every `[changed]` line has
+  been accounted for first (`CONTRIBUTING.md`); running it to make a diff go
+  away is how a real upstream change gets silently absorbed.
 
 ### When a filter matches nothing
 
@@ -242,8 +247,12 @@ decision that shows up only as an absence is the failure mode this document
 argues against elsewhere; the issue itself carries the measurements.
 
 The watcher says so. `filter_collapsed` flags any source whose declared
-filter matches no heading, the run prints a `[warn]`, and the evidence bundle
-carries `collapsed_filter_sources`. It is deliberately **not** a failure and
+filter matches no heading, the run prints a `[warn]`, the evidence bundle
+carries `collapsed_filter_sources`, and both the source watch and the monthly
+refresh turn that list — with the narrower `coverage_warning_sources` beside
+it, raised when a filtered source's page has no heading at page level — into a
+`::warning::` annotation and a run-summary entry. The condition is deliberately
+**not** a failure and
 **not** a change: the fetch succeeded and the fingerprint is honest about what it
 saw. What has gone is coverage — and a source watching only its preamble reports
 "unchanged" forever, which is indistinguishable from a healthy one. That
@@ -252,14 +261,55 @@ rather than inferred. `collapsed_filter_sources` is kept separate from
 `failed_sources` because the two need opposite responses: a failed fetch
 recovers by itself on the next run, a collapsed filter never does.
 
+Two limits on that announcement, stated because the difference decides who has
+to act. Both channels are visible to whoever opens the run and neither notifies
+anyone, so a collapsed filter is still found by somebody looking rather than by
+being told. And the stale guard is not an automatic second net for it: because
+the fetch succeeded, a refresh that advances the row's last-verified date keeps
+that row out of the staleness window altogether, so withholding the advance is a
+judgement someone has to make. What *is* mechanical is the committed baseline —
+`CommittedBaselineInvariantTests` in `tests/test_watch_sources.py` fails the
+build if a stored fingerprint shows a filtered source with no headings, so a
+collapse cannot be quietly re-baselined into the new normal even though it can
+be quietly present in a single day's run.
+
 ## What the cadence cannot find at all
 
-Every watched source but one is a per-capability page, and a per-capability page
-can only ever report drift on a row that **already exists**. The registry holds
-exactly one release-notes source — Defender for Cloud, plus its archive — and no
-Purview, Defender XDR, Defender for Cloud Apps, Entra or Sentinel "what's new"
-equivalent. **The automated cadence is therefore structurally incapable of
-finding a capability that should become a new row.**
+The watched surface cannot be relied on for discovery — which is a weaker and
+truer claim than "no watched source can ever surface a new capability", and the
+difference is worth stating precisely because the registry refutes the stronger
+form.
+
+Most of the registry is per-capability pages, which can only ever report drift on
+a row that **already exists**. The two framework sources watch an edition token,
+not Microsoft's product surface at all.
+
+**The release-notes and aggregate reference pages are a partial exception.** Their
+`relevance_filter` is *topical*, not an enumeration of the entries existing rows
+cite: `defender-release-notes` and its archive filter on `\bAI\b`, `\bFoundry\b`
+and `artificial intelligence`, and `apply_relevance_filter` keeps every heading
+matching one of those. So a brand-new AI entry on those pages is in scope, moves
+`headings` and `heading_count`, and is reported as a change. The committed
+baseline already holds in-scope headings for capabilities no matrix row cites —
+AI posture management on GCP Vertex, the Data and AI security dashboard,
+threat protection for AI agents. Saying those are "filtered out by construction"
+would be false, and it was.
+
+What is true is narrower, and it is still enough to make discovery a human step:
+
+- **Coverage.** Defender for Cloud is the only product with a watched what's-new
+  page. Nothing watches the Purview, Defender XDR, Defender for Cloud Apps,
+  Entra or Sentinel equivalents, so a new capability announced there is invisible
+  to every tier.
+- **Interpretation.** A reported change is an instruction to re-adjudicate the
+  rows that source backs. Nothing in the cadence turns an unrecognised heading
+  into a row proposal, and the adjudicator's permitted writes do not include
+  adding a row. A new entry therefore surfaces as "this source changed", and a
+  human decides whether it means a new row.
+
+**So the cadence can occasionally show you a capability you have no row for, and
+it can never propose the row.** Treat the watched what's-new coverage as one
+narrow product's early warning, not as discovery.
 
 That gap is stated rather than closed, and the README and the matrix now say the
 same thing rather than promising more: the automated half of the monthly refresh
@@ -296,7 +346,21 @@ only when primary sources converge **and** the behaviour is confirmed in a real
 tenant. Automation cannot confirm anything in a tenant, so it can never satisfy
 the exit condition. It raises
 `.github/ISSUE_TEMPLATE/tenant-verification.md` instead, and
-`scripts/validate_bot_pr.py` fails any pull request that attempts the transition.
+`scripts/validate_bot_pr.py --bot` fails any **automated** change that attempts
+the transition.
+
+**Read that scoping precisely, because it is easy to overstate.** Two checks —
+the path allowlist and the escalation direction — are hard failures only under
+`--bot`, which the two automation workflows pass and the `Validate matrix`
+pull-request gate does not. That asymmetry is deliberate: a human who has
+completed the in-tenant verification may make exactly this change, and blocking
+it would block the only legitimate route out of *Requires further validation*.
+On a human pull request both conditions are therefore **reported for reviewer
+attention, not blocked** — so the reviewer, not the gate, is what stops an
+unearned transition. The same holds for the path allowlist: `matrix/`,
+`crosswalk/`, `checklists/`, `CHANGELOG.md` and `.github/watch-state/` bound
+what an *automated* run may touch, while ordinary maintenance of `scripts/`,
+`docs/`, `tests/` and the workflows is expected from a human and only noted.
 
 **No tier merges anything.** Every automated change arrives as a draft pull
 request for human approval.
@@ -332,10 +396,23 @@ credential.
 They are not the only entries in that array, and the others sit there for the
 opposite kind of reason. The `docs.github.com` Copilot-policy and MCP pages are
 perfectly fetchable; they are kept out of `sources` *precisely* so that no
-non-Microsoft-Learn page content ever reaches the model tier. A `reason` is a
-required key on every human-only entry for exactly this: "cannot be fetched" and
-"must not be fetched" are indistinguishable from the outside and have opposite
-remedies.
+**GitHub Docs** page content reaches the model tier. `check_human_only_containment`
+in `scripts/validate_bot_pr.py` enforces that, so it is a gate rather than a
+convention.
+
+Stated at that width deliberately, because the wider claim would be false: the
+watched array is not Learn-only. Four entries fetch Markdown from
+`raw.githubusercontent.com` — the MicrosoftDocs repositories that Learn itself
+renders — one fetches the OWASP GenAI landing page, and one the public Microsoft
+365 Roadmap. What the containment buys is narrower and still worth having:
+admitting `docs.github.com` to the citation allowlist (decision D3) widened what
+this repository may *cite*, and keeping those entries out of `sources` stops
+that admission from also widening what an automated run may *fetch and
+adjudicate*.
+
+A `reason` is a required key on every human-only entry for exactly this:
+"cannot be fetched" and "must not be fetched" are indistinguishable from the
+outside and have opposite remedies.
 
 ## CHANGELOG discipline
 
@@ -344,6 +421,15 @@ run far more often than they change anything, and a heading per run would bury
 the signal under "checked, nothing changed" entries. D1 and D4 never write to
 `CHANGELOG.md` at all; D2 appends a bullet under the current month's heading, and
 D3 creates that heading. `scripts/changelog_entry.py` enforces this.
+
+**One heading per calendar month, except across a release.** `find_month_heading`
+matches a month's heading only if it carries the word *refresh*, which every
+heading the script creates does and a released heading — `## [0.1.3] — …` — does
+not. So automation can never append a bullet into a section that has already been
+tagged and published: a post-tag bullet for the same month opens a fresh
+`## [Unreleased] — <date> refresh` heading above the release instead. That is why
+two headings for one calendar month legitimately coexist, and why the `refresh`
+token must be kept out of a released heading.
 
 D3 writes an entry even when nothing changed. That matches the existing
 2026-07-14 entry, which records that every status held — and it guarantees
@@ -392,7 +478,7 @@ and update both workflows together.
 ## Operating the cadence
 
 ```bash
-python3 -m unittest discover -s tests                  # signal-scoping and registry tests
+python3 -m unittest discover -s tests                  # signal-scoping, registry, gate and staleness tests
 python3 scripts/watch_sources.py                       # detect changes (read-only)
 python3 scripts/watch_sources.py --update-baseline     # accept the current state as the baseline
 python3 scripts/stale_guard.py                         # list rows past the staleness window
@@ -406,6 +492,25 @@ report line looked plausible, and only re-deriving the heading counts by hand
 exposed it. `tests/test_watch_sources.py` therefore includes the case that would
 have caught it — a fixture whose only change is an out-of-scope retirement notice,
 asserted to produce **no** reported change.
+
+Every module in `tests/` earns its place the same way, by covering something that
+failed quietly rather than loudly:
+
+- `tests/test_watch_sources.py` — signal extraction and scoping, registry shape,
+  network-free invariants over the committed baseline (a re-baseline is
+  otherwise self-confirming), and that every coverage-loss key the watcher emits
+  is consumed by some workflow.
+- `tests/test_validate_bot_pr.py` — the gates themselves, including the two
+  directions of registry coverage and the cases where a check used to report a
+  pass over rows it never examined.
+- `tests/test_stale_guard.py` — the staleness arithmetic, whose boundary is a
+  strict `age > window` so an item exactly at the window is fresh, and the
+  step-output contract `stale-guard.yml` compares against a literal.
+
+A test that asserts how many items are stale today would rot on the next
+re-verification, so the staleness tests use synthetic fixtures with an explicit
+`--today` for every behavioural assertion and reserve the committed files for
+properties that survive a re-read.
 
 ## Running tiers D2 and D3 locally
 
@@ -468,8 +573,9 @@ rows it backs — to `sources` if a workflow may fetch it, to `human_only_source
 if it may not. As of `schema_version` 2 **both** arrays carry `matrix_rows`
 (integers) and `crosswalk_rows` (strings), and both are validated:
 `registry_problems` rejects an entry that declares neither and an id duplicated
-across the two arrays, and `check_source_coverage` rejects a matrix row that no
-entry claims. Before that, coverage for the human-only half was recorded only in
+across the two arrays, and `check_source_coverage` rejects both a matrix row
+that no entry claims and a claim on a row the matrix does not contain. Before
+that, coverage for the human-only half was recorded only in
 prose inside each entry's `reason`, which is why rows 12 and 13 could sit
 unwatched through a full release without anything being able to say so. A source
 that is not in the registry is never fetched.
@@ -504,7 +610,13 @@ Three constraints, all enforced in code:
 - **`watch_only: true` keeps a framework source out of `allowed_citation_urls`.**
   Watching something must not enlarge what an automated run may claim. Framework
   sources back cross-walk rows, not matrix rows, so `matrix_rows` is omitted;
-  `crosswalk_rows` is documentation for humans and no script reads it.
+  `crosswalk_rows` names the cross-walk row a framework source backs, as that
+  row's own name in the "Framework versions cited" table plus
+  " framework-versions row". It is read, not decorative: `registry_problems` in
+  `scripts/watch_sources.py` type-checks it and rejects an entry that declares
+  neither key, `check_source_coverage` rejects a value that is not a row of that
+  table, and `claimed_crosswalk_rows` is part of how the human-only-backed
+  dated-item count is derived.
 
 **Detection is not judgement, and here it is also not fast.** This tier reports
 *that* an edition changed, never what it means — that stays tier D2 or a human.

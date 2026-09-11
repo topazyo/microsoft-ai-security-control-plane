@@ -59,8 +59,19 @@ jobs:
         with:
           python-version: '3.12'
 
+      # `shell: bash` for the same reason as stale-guard.yml, and it matters more
+      # here. Without it the block runs as `bash -e {0}` with no pipefail, so the
+      # step reports `tee`'s status -- always 0. watch_sources.py is not
+      # exit-0-unconditional: a structurally broken registry returns 1 *before*
+      # the fetch loop and therefore before `emit_github_output` runs, so every
+      # output would be absent while the step stayed green. `changed`,
+      # `failed_sources` and both coverage keys would all read as empty, which
+      # skips adjudication, the deferred-adjudication announcement, the
+      # unreachable-source report and the coverage-loss report alike: a fully
+      # green daily watch that fingerprinted nothing.
       - name: Fingerprint pinned sources
         id: watch
+        shell: bash
         run: |
           python3 scripts/watch_sources.py \
             --evidence-out "${RUNNER_TEMP}/evidence.json" \
@@ -79,6 +90,65 @@ jobs:
           echo "::warning::Unreachable sources this run: ${{ steps.watch.outputs.failed_sources }}."
           echo "Baselines were preserved and no last-verified date was advanced."
           echo "These rows will age into the staleness window and be raised by the stale guard."
+
+      # The other loss class, and the one with no automatic second net.
+      #
+      # `collapsed_filter_sources` and `coverage_warning_sources` were written to
+      # GITHUB_OUTPUT and into the evidence bundle, and read by nothing. The
+      # committed baseline is guarded -- tests/test_watch_sources.py's
+      # CommittedBaselineInvariantTests reddens CI if a stored fingerprint shows
+      # a collapsed filter -- but that guard only sees a baseline someone
+      # re-committed. A collapse that appears in a daily run reached no further
+      # than a stderr `[warn]` inside a green run, and `coverage_warning_sources`
+      # had no channel at all.
+      #
+      # Unlike an unreachable source, this one does not raise itself: the fetch
+      # SUCCEEDS, so the monthly refresh's "advance only where the source was
+      # fetched successfully" criterion still advances the affected rows and they
+      # never enter the staleness window. Deliberately not a failure -- the
+      # fingerprint is honest about what it saw -- but never silent either.
+      #
+      # An annotation plus a run-summary entry is what this repository already
+      # does for "green, but a human must act" (see the adjudication-deferred
+      # job below). Needs nothing past `contents: read`.
+      - name: Report coverage loss in the watched signal
+        if: steps.watch.outputs.collapsed_filter_sources != '' || steps.watch.outputs.coverage_warning_sources != ''
+        env:
+          COLLAPSED_SOURCES: ${{ steps.watch.outputs.collapsed_filter_sources }}
+          COVERAGE_WARNING_SOURCES: ${{ steps.watch.outputs.coverage_warning_sources }}
+        run: |
+          echo "::warning::Coverage loss in the watched signal. Collapsed relevance filter: ${COLLAPSED_SOURCES:-none}. Narrowed page-level coverage: ${COVERAGE_WARNING_SOURCES:-none}. Not a failure and not a status change - these sources fetched cleanly while watching less than the registry claims."
+          {
+            printf '## Coverage loss in the watched signal\n\n'
+            printf 'Collapsed relevance filter: %s\n\n' "${COLLAPSED_SOURCES:-none}"
+            printf 'Narrowed page-level coverage: %s\n\n' "${COVERAGE_WARNING_SOURCES:-none}"
+            cat <<'SUMMARY'
+          Neither condition is a failure and neither is a status change: the fetch
+          succeeded and the fingerprint is honest about what it saw. What has gone is
+          coverage. A source watching less than its registry entry claims reports
+          "unchanged" on every later run, which is indistinguishable from a healthy one.
+
+          A collapsed relevance filter means a source declared a narrowing it is not
+          achieving: the filter is wrong, or the page restructured out from under it,
+          and that source's watched signal has fallen back to its page-level text.
+          Narrowed page-level coverage means a filtered source's page has no heading at
+          page level, so part of what the entry claims to watch is unreadable. The
+          per-source `[warn]` lines are in the `Fingerprint pinned sources` step log,
+          and that line, not this heading, is authoritative for which condition fired.
+
+          **This one does not raise itself.** An unreachable source recovers on the next
+          run and its rows age into the staleness window; a source listed here fetched
+          successfully, so the monthly refresh keeps advancing its rows' last-verified
+          dates and the stale guard never sees them. Withholding that advance is a
+          judgement someone has to make.
+
+          **What to do:** re-read the source's `relevance_filter` in
+          `.github/watch-state/sources.json` against the live page. Either the filter is
+          repaired, or the entry's claim about what it watches is corrected. Do not
+          re-baseline to make this go away - that stores the degraded signal as the new
+          normal.
+          SUMMARY
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   # Deferred rather than failed: while no ANTHROPIC_API_KEY is configured, tier D2
   # is operated by hand (docs/agent-cadence.md, "Running tiers D2 and D3

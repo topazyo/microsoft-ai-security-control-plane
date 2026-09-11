@@ -26,11 +26,18 @@ labels: enhancement
 - **Primary-source URL:**
 - **Date you read that source (YYYY-MM-DD):**
 
-**Allowed source hosts:** Microsoft Learn (`learn.microsoft.com`) or the public
-Microsoft 365 Roadmap (`microsoft.com/.../microsoft-365/roadmap`) only. A
-launch blog or Tech Community post is not a source of truth for status, and a
-Message Center post has no public URL — cite the Roadmap feature ID and mention
-the MC ID as a tenant-side reference only.
+**Allowed source hosts:** Microsoft Learn (`learn.microsoft.com`), the public
+Microsoft 365 Roadmap (`microsoft.com/.../microsoft-365/roadmap`), or GitHub Docs
+(`docs.github.com`) for a GitHub capability. These are the three hosts
+`ALLOWED_SOURCE_HOSTS` in `scripts/validate_bot_pr.py` accepts; anything else
+fails the validator. GitHub Docs carries one extra condition, because it is the
+first-party documentation for a Microsoft-owned product rather than a relaxation
+toward blogs: such a source is registered under `human_only_sources` in
+`.github/watch-state/sources.json`, never under `sources`, so no automated run
+fetches it and its row's date moves only when a human re-reads it. A launch blog
+or Tech Community post is not a source of truth for status, and a Message Center
+post has no public URL — cite the Roadmap feature ID and mention the MC ID as a
+tenant-side reference only.
 
 ## Status-bearing evidence (verbatim)
 

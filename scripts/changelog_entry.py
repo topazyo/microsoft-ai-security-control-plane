@@ -8,9 +8,19 @@ anything, so a heading per run would bury the signal under "checked, nothing
 changed" entries.
 
 Behaviour:
-  * If a heading for the current calendar month already exists, the new bullet is
-    appended under that heading's section.
+  * If a *refresh* heading for the current calendar month already exists, the new
+    bullet is appended under that heading's section.
   * Otherwise a new heading is inserted above the most recent existing entry.
+
+The word "refresh" in that first rule is load-bearing, and it is why
+`find_month_heading` tests for it rather than matching on the date alone. A
+released heading -- `## [0.1.3] - 2026-09-10` -- carries no such token, so it is
+deliberately *not* found: automation must never append a bullet into a section
+that has already been tagged and published. A post-tag bullet for the same
+calendar month correctly opens a fresh `## [Unreleased] - <date> refresh`
+heading above the release, which is why two headings for one month can coexist
+and why every heading this script creates carries the token it later looks for.
+`tests/test_changelog_entry.py` pins both halves.
 
 Only tiers D2 (event-gated adjudication) and D3 (monthly consolidation) may call
 this. Tiers D1 and D4 never write to CHANGELOG.md.
@@ -31,6 +41,26 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+
+
+def use_utf8_streams() -> None:
+    """Print repository text without depending on the console's code page.
+
+    These scripts echo text taken verbatim from tracked files and fetched
+    pages, and a Windows console defaults to a legacy code page. An em dash
+    survives cp1252; an arrow (U+2192) does not, so the `--dry-run` command
+    published in docs/agent-cadence.md died with UnicodeEncodeError on the
+    maintainer's own platform while CI, which runs UTF-8, stayed green.
+
+    Reconfiguring is the right fix rather than stripping the characters:
+    mangling the output would hide exactly the upstream text these scripts
+    exist to report. Tiers D2 and D3 are currently operated locally, so this is
+    the path that actually runs.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
 
 HEADING = re.compile(r"^## \[(?P<version>[^\]]+)\][^\n]*?(?P<date>20\d{2}-\d{2}-\d{2})[^\n]*$", re.MULTILINE)
 ANY_HEADING = re.compile(r"^## ", re.MULTILINE)
@@ -77,6 +107,7 @@ def insert_new_heading(text: str, heading: str, section: str, bullet: str) -> st
 
 
 def main() -> int:
+    use_utf8_streams()
     parser = argparse.ArgumentParser(description="Append a refresh record to CHANGELOG.md.")
     parser.add_argument("--bullet", required=True, help="The bullet text (without the leading '- ').")
     parser.add_argument("--section", default="Changed", help="Keep a Changelog section name (default: Changed).")

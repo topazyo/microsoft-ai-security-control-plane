@@ -34,12 +34,32 @@ jobs:
         with:
           python-version: '3.12'
 
+      # `shell: bash` is load-bearing, not decoration. Without it a `run:` block
+      # is executed as `bash -e {0}` with NO pipefail, so this pipeline reported
+      # `tee`'s status -- always 0. A crash in stale_guard.py therefore produced
+      # a green weekly run, an absent `stale` output, an empty staleness.txt and
+      # a skipped issue step: every visible signal said "nothing is stale".
+      # Naming the shell explicitly selects `bash --noprofile --norc -eo
+      # pipefail`, so the script's own failure fails the step.
       - name: Evaluate staleness
         id: stale
+        shell: bash
         run: python3 scripts/stale_guard.py | tee staleness.txt
 
+      # Fail closed on the output, and read the scope precisely rather than
+      # claiming more than this buys. `== 'true'` treated an ABSENT output as
+      # "not stale", which is the one value it must never be read as. `!= 'false'`
+      # covers an output that is absent *while the step succeeded* -- a future
+      # refactor that stops emitting it, or a runner with no GITHUB_OUTPUT.
+      #
+      # It does NOT file the issue when the guard crashes, and that is correct
+      # rather than a gap: a step `if` containing no status-check function is
+      # implicitly ANDed with `success()`, so a failed Evaluate step skips this
+      # one whatever the comparison says. The crash signal is the red run that
+      # `shell: bash` above now produces -- and filing an issue from a crashed
+      # run would paste a truncated or empty report into it.
       - name: Open or update the staleness issue
-        if: steps.stale.outputs.stale == 'true'
+        if: steps.stale.outputs.stale != 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TITLE: 'Stale rows: last-verified dates exceed the monthly window'
@@ -51,8 +71,16 @@ jobs:
             cat staleness.txt
             echo
             echo "Re-verification is a human step for any row whose status is"
-            echo "**Requires further validation**, and for the Message Center and"
-            echo "CSA AICM sources, which are not machine-fetchable. See"
+            echo "**Requires further validation**, and for the Message Center,"
+            echo "CSA AICM, NIST AI 600-1 and GitHub Docs sources. Their reasons"
+            echo "differ and the registry records each one: the Message Center is"
+            echo "tenant-scoped with no public URL and the CSA workbook is"
+            echo "registration-gated, so neither can be fetched at all; the NIST"
+            echo "publication is a static PDF read by a human; and the GitHub Docs"
+            echo "pages are perfectly fetchable but kept outside the automated"
+            echo "path **by design**, so that no non-Learn page content reaches"
+            echo "the model tier. In every case their staleness means a human is"
+            echo "overdue, not that the automation is failing. See"
             echo "checklists/capability-status-verification.md, Group 9."
             echo
             echo "_Raised automatically by the stale guard; this issue is reused, not duplicated._"
