@@ -340,6 +340,7 @@ extraction mode; the remedy here is an honest sentence in the README, plus
 | Anything → **Requires further validation**, or adding a caveat | open a pull request |
 | **Public Preview → GA** | open a pull request, with the qualifier removal quoted |
 | **Requires further validation → anything else** | **open an issue only — never a pull request** |
+| Advancing a **last-verified date** | only with a fetch that corroborates it — see below |
 
 The last row follows from `docs/how-to-read-status.md`: a row leaves that state
 only when primary sources converge **and** the behaviour is confirmed in a real
@@ -349,15 +350,55 @@ the exit condition. It raises
 `scripts/validate_bot_pr.py --bot` fails any **automated** change that attempts
 the transition.
 
-**Read that scoping precisely, because it is easy to overstate.** Two checks —
-the path allowlist and the escalation direction — are hard failures only under
-`--bot`, which the two automation workflows pass and the `Validate matrix`
+**A date is a claim too, and until v0.1.4 it was the one a run could set
+freely.** Every other gate asks whether a *label* is justified. The last-verified
+date asserts something just as specific — the matrix's *How rows are verified*
+says a date set by a monthly automated refresh means the row's pinned source was
+fetched successfully on that date — and nothing checked that a fetch had
+happened at all. `check_date_corroboration` does, for every row whose date moves
+forward, under three rules that each report **corroborated**, **contradicted**,
+or **not applicable with its reason**. Three outcomes rather than two, because
+"this rule does not apply here" and "this rule found agreement" are different
+findings, and collapsing them is how a check comes to report a pass over work it
+never did.
+
+| Rule | Asks |
+|---|---|
+| **R-a** | Can anything watched corroborate this row at all? A row claimed only by `human_only_sources` can never be advanced by an agent run — nothing fetches it. |
+| **R-b** | Was a claiming watched source actually fetched for this stamp: `ok: true`, with `checked_at` on the stamped day or the day before? |
+| **R-c** | For a cross-walk row backed by a `mode: "version"` source, does the edition year the row cites appear in that source's captured `signals.versions`? |
+
+The one-day tolerance is only correct because the adjudicator is required to
+stamp **the claiming fetch's UTC `checked_at` date**, not the day it is writing
+(`.claude/agents/status-adjudicator.md`). With the stamp anchored that way the
+width of the refresh window stops mattering; without it a four-day window would
+need a four-day tolerance, and a tolerance that wide corroborates almost
+anything. The tolerance is one-sided on purpose: a fetch *later* than the stamp
+is a different run than the one the date claims. That shape is not
+hypothetical — every `checked_at` in the committed fingerprints spent a month
+reading a day after the rows it backed, because the 2026-09 re-baseline was a
+separate commit from the refresh.
+
+**The check reads the evidence bundle as well as the committed fingerprints, and
+the local procedure below must pass it.** The documented local run does not use
+`--update-baseline`, so `fingerprints.json` in a locally-produced refresh pull
+request holds the *previous* baseline's `checked_at` by construction. Without
+`--evidence` the check would flag every row of that refresh. Both automation
+workflows already pass it.
+
+**Read that scoping precisely, because it is easy to overstate.** Three checks —
+the path allowlist, the escalation direction and date corroboration — are hard
+failures only under `--bot`, which the two automation workflows pass and the `Validate matrix`
 pull-request gate does not. That asymmetry is deliberate: a human who has
 completed the in-tenant verification may make exactly this change, and blocking
 it would block the only legitimate route out of *Requires further validation*.
-On a human pull request both conditions are therefore **reported for reviewer
+On a human pull request all three are therefore **reported for reviewer
 attention, not blocked** — so the reviewer, not the gate, is what stops an
-unearned transition. The same holds for the path allowlist: `matrix/`,
+unearned transition. Date corroboration is noted rather than blocked for the
+same reason: rows 12 and 13 are backed only by human-only sources, so R-a
+contradicts every time a human legitimately advances them by re-reading the
+GitHub Docs pages, which is the only way those rows can ever move. The same
+holds for the path allowlist: `matrix/`,
 `crosswalk/`, `checklists/`, `CHANGELOG.md` and `.github/watch-state/` bound
 what an *automated* run may touch, while ordinary maintenance of `scripts/`,
 `docs/`, `tests/` and the workflows is expected from a human and only noted.
@@ -541,9 +582,19 @@ would:
 
 ```bash
 python3 -m compileall -q scripts
-python3 scripts/validate_bot_pr.py --base-ref origin/main
+python3 scripts/validate_bot_pr.py --base-ref origin/main --evidence evidence.json
 python3 scripts/stale_guard.py
 ```
+
+**`--evidence evidence.json` is load-bearing on this path, not optional.** Step 1
+above runs the watcher *without* `--update-baseline`, so `fingerprints.json` in
+your working tree still holds the previous baseline's `checked_at`. The date
+corroboration check would then find no fetch backing any date this refresh
+advanced and flag every row of it. The bundle written in step 1 carries this
+run's `checked_at`, and the check prefers it. Both automation workflows pass the
+same flag; this is the local path catching up with them, not a relaxation. The
+flag also narrows citation containment from the pinned registry to what this run
+actually reached, which is the stricter reading.
 
 **What must not be relaxed just because a human is driving:**
 

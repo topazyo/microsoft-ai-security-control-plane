@@ -42,6 +42,12 @@ Checks
                            on which ALLOWED_SOURCE_HOSTS admits the host at all,
                            and it was published to contributors as a guarantee
                            while nothing enforced it.
+11. date corroboration   — a last-verified date may not advance unless something
+                           that can actually corroborate it did. Every other
+                           check here asks whether a *label* is justified; this
+                           one asks whether the *date* is, which was the one
+                           claim a run could set freely. See
+                           `check_date_corroboration`.
 
 Exit code 0 = all checks pass. Non-zero = at least one violation.
 """
@@ -49,10 +55,12 @@ Exit code 0 = all checks pass. Non-zero = at least one violation.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -66,6 +74,49 @@ CROSSWALK = REPO_ROOT / "crosswalk" / "framework-crosswalk.md"
 # held in four registry entries and written down nowhere, so there was nothing
 # for a claim to be wrong against. It is written once, here, and enforced.
 CROSSWALK_ROW_SUFFIX = " framework-versions row"
+
+
+def load_sibling_script(name: str):
+    """Import a sibling script by file location rather than through `sys.path`.
+
+    `scripts/` is not a package. A plain `import stale_guard` works only when
+    this file is executed directly, because then `sys.path[0]` happens to be
+    `scripts/`; the tests load this module with
+    `importlib.util.spec_from_file_location`, where the same import raises. So
+    the one place this file depends on another script resolves the path itself.
+
+    Deliberately not registered in `sys.modules`. The tests load `stale_guard`
+    under that name too, and a break test is only meaningful if reverting the
+    real file is what the code under test sees -- a cached module object from
+    another test file would make a reverted parser keep passing.
+    """
+    path = REPO_ROOT / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:  # pragma: no cover - import plumbing
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The only "Last verified" parser in this repository, imported rather than
+# reimplemented. The cost of the alternative is on record: this file and
+# stale_guard.py once disagreed about whether a blank line ends a markdown
+# table, one saw a single cross-walk row while the other saw four, and three
+# valid registry entries were reported as claiming rows that "do not exist".
+# See `crosswalk_row_names` below, which carries the full account.
+stale_guard = load_sibling_script("stale_guard")
+LAST_VERIFIED_COLUMN = "Last verified"
+
+# The column of the cross-walk's framework-versions table that states which
+# edition a row cites. Named once so the reader and the rule cannot drift.
+EDITION_COLUMN = "Version / edition cited"
+
+# An edition year stated in that cell, e.g. "2026 edition". Only one of the four
+# framework rows spells its edition this way; the others pin a dist version, a
+# publication month or a semantic version, and for those the rule must report
+# *not applicable* rather than staying silent.
+EDITION_YEAR = re.compile(r"(20[0-9]{2}) edition")
 
 LEGEND_LABELS = {
     "GA",
@@ -577,17 +628,33 @@ def crosswalk_row_names(text: str) -> set[str]:
     An empty return is a parse failure, not "nothing to check", and the caller
     must treat it as an error -- the same rule matrix_row_ids follows.
     """
+    return {
+        row[0] + CROSSWALK_ROW_SUFFIX
+        for row in framework_versions_rows(text)
+        if row and row[0]
+    }
+
+
+def framework_versions_rows(text: str) -> list[list[str]]:
+    """Cells of each data row of the cross-walk's "Framework versions cited" table.
+
+    Split out of `crosswalk_row_names` when `check_date_corroboration` needed a
+    second column of the same table. Reading it with a second locator would have
+    recreated exactly the divergence that docstring warns about, one table
+    further in: the row-name check and the edition check could then disagree
+    about which rows exist.
+    """
     lines = text.splitlines()
     header_index = None
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("|") and "Framework" in stripped and "Last verified" in stripped:
+        if stripped.startswith("|") and "Framework" in stripped and LAST_VERIFIED_COLUMN in stripped:
             header_index = index
             break
     if header_index is None:
-        return set()
+        return []
     width = len([c for c in lines[header_index].strip().strip("|").split("|")])
-    names: set[str] = set()
+    rows: list[list[str]] = []
     for line in lines[header_index + 2 :]:
         stripped = line.strip()
         if not stripped.startswith("|"):
@@ -607,9 +674,23 @@ def crosswalk_row_names(text: str) -> set[str]:
             continue
         if all(set(c) <= set("-: ") for c in cells):
             continue
-        if cells and cells[0]:
-            names.add(cells[0] + CROSSWALK_ROW_SUFFIX)
-    return names
+        rows.append(cells)
+    return rows
+
+
+def framework_versions_header(text: str) -> list[str]:
+    """The header cells of that table, so a column can be resolved by name.
+
+    Separate from `framework_versions_rows` because an unresolvable column must
+    be a loud error rather than an index that silently reads the wrong cell --
+    the fail-open `ColumnContractTests` pins for the matrix, reached here
+    through the cross-walk.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|") and "Framework" in stripped and LAST_VERIFIED_COLUMN in stripped:
+            return [c.strip() for c in stripped.strip("|").split("|")]
+    return []
 
 
 def orphan_claims(
@@ -1133,6 +1214,450 @@ def check_escalation_direction(
         findings.note("escalation direction: no row moved out of 'Requires further validation'")
 
 
+CORROBORATED = "corroborated"
+CONTRADICTED = "contradicted"
+NOT_APPLICABLE = "not applicable"
+
+# Governed content files this check compares across the diff, keyed by the name
+# used in findings. The checklist footer is deliberately absent: it carries a
+# date but is not a row, no registry entry claims it, and there is nothing that
+# could corroborate it other than the human who re-ran the checklist.
+CORROBORATED_TARGETS = {
+    "matrix row": "matrix/capability-status-matrix.md",
+    "cross-walk row": "crosswalk/framework-crosswalk.md",
+}
+
+
+def claim_keys(entry: dict) -> list[tuple[str, str]]:
+    """The dated items a registry entry claims, as (kind, identifier) pairs.
+
+    Read from `.github/watch-state/sources.json` and never from
+    `fingerprints.json`: the fingerprint file is evidence of what a run
+    fetched, not a registry of what a source backs, and its `mode: "version"`
+    entries carry an empty `matrix_rows` and no `crosswalk_rows` key at all.
+    Deriving coverage from it would silently conclude that the two framework
+    sources back nothing.
+    """
+    keys: list[tuple[str, str]] = []
+    for row in entry.get("matrix_rows") or []:
+        if isinstance(row, int):
+            keys.append(("matrix row", str(row)))
+    for row in entry.get("crosswalk_rows") or []:
+        if isinstance(row, str) and row.endswith(CROSSWALK_ROW_SUFFIX):
+            keys.append(("cross-walk row", row[: -len(CROSSWALK_ROW_SUFFIX)]))
+    return keys
+
+
+def table_order(item: tuple[str, str]) -> tuple[int, str]:
+    """Sort matrix rows 1, 2, ... 13 rather than 1, 10, 11, 12, 13, 2.
+
+    Cosmetic, and worth it: these lines are pasted into a refresh pull request
+    body and read by a human checking that every row they advanced is accounted
+    for. A list that jumps from 1 to 10 invites a miscount.
+    """
+    identifier = item[0]
+    return (int(identifier), "") if identifier.isdigit() else (2**31, identifier)
+
+
+def parse_iso_day(value: str | None) -> date | None:
+    """A calendar date from an ISO date or timestamp, or None if it is neither.
+
+    None is never read as agreement anywhere below. A timestamp this cannot
+    parse is an unreadable input, and an unreadable input is the one thing that
+    must not be allowed to look like corroboration.
+    """
+    if not isinstance(value, str) or len(value) < 10:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def check_date_corroboration(
+    base_ref: str | None,
+    findings: Findings,
+    bot: bool,
+    evidence_path: Path | None = None,
+    before_texts: dict[str, str] | None = None,
+    after_texts: dict[str, str] | None = None,
+    registry: dict | None = None,
+    fingerprints: dict | None = None,
+    evidence: dict | None = None,
+) -> None:
+    """A last-verified date may not advance unless something could corroborate it.
+
+    Every other check in this file asks whether a *label* is justified. This one
+    asks whether the *date* is, which until now was the single claim a run could
+    set freely: the matrix says a date set by a monthly automated refresh means
+    the row's pinned source was fetched successfully on that date, and nothing
+    checked that a fetch had happened at all.
+
+    Three rules, each reporting one of three outcomes for every row whose date
+    moved forward. Three, not two, because "this rule does not apply here" and
+    "this rule found agreement" are different findings and collapsing them is
+    how a check comes to report a pass over work it never did:
+
+      R-a  Something watched could corroborate this row at all. A row claimed
+           only by `human_only_sources` can never be advanced by an agent run,
+           by construction -- nothing fetches it.
+      R-b  A claiming watched source was actually fetched for this stamp: an
+           entry with `ok: true` whose `checked_at` falls on the stamped day or
+           the day before.
+      R-c  For a cross-walk row backed by a `mode: "version"` source, the
+           edition year the row cites appears in that source's captured
+           `signals.versions`. Only one of the four framework rows states its
+           edition as a year; the rest pin a dist version, a publication month
+           or a semantic version, and for those this reports *not applicable:
+           no edition year stated* rather than nothing.
+
+    **Why {D, D-1} is a correct tolerance rather than a guess.** It is only
+    correct because the adjudicator is required to stamp an advanced row with
+    the claiming fetch's UTC `checked_at` date -- which is what the matrix's
+    "How rows are verified" already says a refresh-set date means, now written
+    into `.claude/agents/status-adjudicator.md` as a rule rather than left as a
+    description. With the stamp anchored that way the length of the refresh
+    window stops mattering: a four-day window would otherwise need a four-day
+    tolerance, and a tolerance that wide corroborates almost anything. D-1
+    remains because the fetch and the commit can legitimately fall either side
+    of a UTC midnight.
+
+    **Both the evidence bundle and the committed fingerprints are consulted, in
+    that order.** The documented local procedure runs the watcher *without*
+    `--update-baseline`, so a locally-produced refresh pull request carries a
+    `checked_at` in `fingerprints.json` that is stale by construction -- it is
+    the previous baseline's. Without reading the bundle this check would flag
+    every row of its own first refresh. The committed skew is worth looking at
+    directly: at the time this was written every `checked_at` in
+    `fingerprints.json` read 2026-09-10, a day *after* the rows it is supposed
+    to back were stamped 2026-09-09, because the re-baseline was a separate
+    commit from the refresh. A later fetch is not corroboration for an earlier
+    stamp -- it is a different run than the one the date claims -- which is why
+    the tolerance is one-sided.
+
+    Bot = error, human = note, the same asymmetry the path allowlist and the
+    escalation-direction check already use: a human re-reading a human-only
+    source is exactly how rows 12 and 13 legitimately advance, and failing that
+    would block the maintenance this repository depends on. A *structural*
+    failure -- an unreadable registry, an unparseable table -- is an error in
+    both modes, because a check that could not run must never report clean.
+
+    Note that nothing here reads the clock. The comparison is stamp against
+    fetch, never either against today, so validating a refresh three days after
+    it was produced gives the same answer as validating it the same hour.
+    """
+    if before_texts is None:
+        if not base_ref:
+            findings.note("date corroboration: skipped (no base ref supplied)")
+            return
+        before_texts = {}
+        for kind, path in CORROBORATED_TARGETS.items():
+            try:
+                before_texts[kind] = subprocess.run(
+                    ["git", "show", f"{base_ref}:{path}"],
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout
+            except (subprocess.CalledProcessError, OSError):
+                findings.note(
+                    f"date corroboration: skipped ({path} not present at base ref)"
+                )
+                return
+
+    if after_texts is None:
+        after_texts = {
+            kind: (REPO_ROOT / path).read_text(encoding="utf-8")
+            for kind, path in CORROBORATED_TARGETS.items()
+        }
+
+    advanced: list[tuple[str, str, date]] = []
+    for kind in CORROBORATED_TARGETS:
+        before = dict(stale_guard.parse_table_dates(before_texts[kind], LAST_VERIFIED_COLUMN))
+        after = dict(stale_guard.parse_table_dates(after_texts[kind], LAST_VERIFIED_COLUMN))
+        if not after:
+            findings.error(
+                "date corroboration",
+                f"no '{LAST_VERIFIED_COLUMN}' date could be read from "
+                f"{CORROBORATED_TARGETS[kind]} in the working tree, so no date was "
+                "compared. This check cannot be reported as clean.",
+            )
+            # `continue`, not `return`: one fault must not hide another. An
+            # unparseable matrix used to stop this loop before the cross-walk
+            # was looked at, so a maintainer would fix the table, re-run, and
+            # only then learn about an uncorroborated framework row. The same
+            # masking `check_matrix` avoids by reporting every column fault in
+            # one pass.
+            continue
+        for identifier, iso in sorted(after.items(), key=table_order):
+            new_day = parse_iso_day(iso)
+            if new_day is None:
+                findings.error(
+                    "date corroboration",
+                    f"{kind} {identifier} carries '{iso}', which is not a calendar date, "
+                    "so it could not be compared against the base ref.",
+                )
+                continue
+            old_day = parse_iso_day(before.get(identifier))
+            if old_day is not None and new_day <= old_day:
+                continue
+            if identifier in before and old_day is None:
+                findings.error(
+                    "date corroboration",
+                    f"{kind} {identifier} carries an unreadable date at the base ref, so "
+                    "whether its stamp advanced is unknown. This is not a clean result.",
+                )
+                continue
+            # A row absent at the base ref -- newly added, or with a date cell
+            # the parser could not read at all -- is treated as advanced. The
+            # conservative direction: it is asserting a verification from a
+            # state nothing could be compared against.
+            advanced.append((kind, identifier, new_day))
+
+    if not advanced:
+        findings.note(
+            "date corroboration: no last-verified date advanced in this change — "
+            "nothing to corroborate"
+        )
+        return
+
+    if registry is None:
+        registry_path = REPO_ROOT / ".github" / "watch-state" / "sources.json"
+        try:
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            findings.error(
+                "date corroboration",
+                f"{len(advanced)} date(s) advanced and the source registry could not be "
+                f"read ({exc}), so none of them could be corroborated.",
+            )
+            return
+
+    if fingerprints is None:
+        fingerprints_path = REPO_ROOT / ".github" / "watch-state" / "fingerprints.json"
+        try:
+            fingerprints = json.loads(fingerprints_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            findings.error(
+                "date corroboration",
+                f"{len(advanced)} date(s) advanced and the committed fingerprints could "
+                f"not be read ({exc}), so none of them could be corroborated.",
+            )
+            return
+
+    if evidence is None and evidence_path is not None and evidence_path.exists():
+        try:
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            findings.error(
+                "date corroboration",
+                f"evidence bundle {evidence_path.name} could not be read ({exc}), so this "
+                "check fell back to the committed fingerprints alone. Stating it rather "
+                "than corroborating against a file that was not read.",
+            )
+            evidence = None
+
+    watched = {entry["id"]: entry for entry in registry.get("sources", []) if entry.get("id")}
+    human_only = {
+        entry["id"]: entry for entry in registry.get("human_only_sources", []) if entry.get("id")
+    }
+    watched_by_item: dict[tuple[str, str], list[str]] = {}
+    human_by_item: dict[tuple[str, str], list[str]] = {}
+    for source_id, entry in watched.items():
+        for key in claim_keys(entry):
+            watched_by_item.setdefault(key, []).append(source_id)
+    for source_id, entry in human_only.items():
+        for key in claim_keys(entry):
+            human_by_item.setdefault(key, []).append(source_id)
+
+    committed_fetches = fingerprints.get("sources") or {}
+    bundle_fetches = (evidence or {}).get("sources") or {}
+
+    def fetch_record(source_id: str) -> tuple[dict | None, str]:
+        """The freshest record for a source, and where it came from.
+
+        The bundle wins because it is this run; the committed fingerprints are
+        the previous baseline whenever the local procedure was followed.
+        """
+        if source_id in bundle_fetches:
+            return bundle_fetches[source_id], "evidence bundle"
+        if source_id in committed_fetches:
+            return committed_fetches[source_id], "committed fingerprints"
+        return None, "nowhere"
+
+    def report(message: str) -> None:
+        if bot:
+            findings.error("date corroboration", message)
+        else:
+            findings.note("date corroboration: " + message)
+
+    edition_header = framework_versions_header(after_texts["cross-walk row"])
+    edition_index = (
+        edition_header.index(EDITION_COLUMN) if EDITION_COLUMN in edition_header else None
+    )
+    edition_cells: dict[str, str] = {}
+    if edition_index is not None:
+        for cells in framework_versions_rows(after_texts["cross-walk row"]):
+            if len(cells) > edition_index and cells[0]:
+                edition_cells[cells[0]] = cells[edition_index]
+
+    contradictions = 0
+    for kind, identifier, day in advanced:
+        key = (kind, identifier)
+        watching = sorted(watched_by_item.get(key, []))
+        humans = sorted(human_by_item.get(key, []))
+        outcomes: list[tuple[str, str, str]] = []
+
+        # R-a --------------------------------------------------------------
+        if watching:
+            outcomes.append(("R-a", CORROBORATED, f"watched by {', '.join(watching)}"))
+        elif humans:
+            outcomes.append(
+                (
+                    "R-a",
+                    CONTRADICTED,
+                    f"claimed only by human-only source(s) {', '.join(humans)}, which no "
+                    "automated run fetches, so this date can only have been set by a "
+                    "human re-read",
+                )
+            )
+        else:
+            outcomes.append(
+                (
+                    "R-a",
+                    CONTRADICTED,
+                    "no registry entry claims this row, so nothing can corroborate its date",
+                )
+            )
+
+        # R-b --------------------------------------------------------------
+        if not watching:
+            outcomes.append(("R-b", NOT_APPLICABLE, "no watched source claims this row (see R-a)"))
+        else:
+            accepted = sorted({day, day - timedelta(days=1)})
+            agreeing: list[str] = []
+            unreadable: list[str] = []
+            disagreeing: list[str] = []
+            for source_id in watching:
+                record, origin = fetch_record(source_id)
+                if record is None:
+                    unreadable.append(f"{source_id} (no fetch record in {origin})")
+                    continue
+                fetched = parse_iso_day(record.get("checked_at"))
+                if fetched is None:
+                    unreadable.append(
+                        f"{source_id} (unreadable checked_at {record.get('checked_at')!r} "
+                        f"in the {origin})"
+                    )
+                    continue
+                if record.get("ok") is not True:
+                    disagreeing.append(f"{source_id} (ok={record.get('ok')!r}, {origin})")
+                    continue
+                if fetched in accepted:
+                    agreeing.append(f"{source_id} fetched ok {fetched.isoformat()} ({origin})")
+                else:
+                    disagreeing.append(f"{source_id} last fetched {fetched.isoformat()} ({origin})")
+            if agreeing:
+                outcomes.append(("R-b", CORROBORATED, "; ".join(agreeing)))
+            else:
+                detail = "; ".join(disagreeing + unreadable) or "no record examined"
+                outcomes.append(
+                    (
+                        "R-b",
+                        CONTRADICTED,
+                        f"no watched claimant was fetched successfully on "
+                        f"{accepted[1].isoformat()} or {accepted[0].isoformat()} — {detail}",
+                    )
+                )
+
+        # R-c --------------------------------------------------------------
+        version_claimants = [s for s in watching if watched[s].get("mode") == "version"]
+        if kind != "cross-walk row" or not version_claimants:
+            outcomes.append(
+                ("R-c", NOT_APPLICABLE, "not a cross-walk row backed by a version-mode source")
+            )
+        elif edition_index is None:
+            outcomes.append(
+                (
+                    "R-c",
+                    CONTRADICTED,
+                    f"the cross-walk has no '{EDITION_COLUMN}' column, so the cited edition "
+                    "could not be read. This is not a clean result.",
+                )
+            )
+        elif identifier not in edition_cells:
+            outcomes.append(
+                (
+                    "R-c",
+                    CONTRADICTED,
+                    f"no '{EDITION_COLUMN}' cell could be read for this row",
+                )
+            )
+        else:
+            years = EDITION_YEAR.findall(edition_cells[identifier])
+            if not years:
+                outcomes.append(
+                    ("R-c", NOT_APPLICABLE, f"no edition year stated in '{EDITION_COLUMN}'")
+                )
+            else:
+                captured: list[str] = []
+                for source_id in version_claimants:
+                    record, origin = fetch_record(source_id)
+                    tokens = ((record or {}).get("signals") or {}).get("versions")
+                    if not isinstance(tokens, list):
+                        captured.append(f"!{source_id}:{origin}")
+                        continue
+                    captured.extend(str(token) for token in tokens)
+                unreadable = [c for c in captured if c.startswith("!")]
+                tokens = [c for c in captured if not c.startswith("!")]
+                missing = sorted(
+                    {year for year in years if not any(year in token for token in tokens)}
+                )
+                if unreadable:
+                    outcomes.append(
+                        (
+                            "R-c",
+                            CONTRADICTED,
+                            "no readable `signals.versions` for "
+                            + ", ".join(u[1:] for u in unreadable),
+                        )
+                    )
+                elif missing:
+                    outcomes.append(
+                        (
+                            "R-c",
+                            CONTRADICTED,
+                            f"the cited edition year(s) {', '.join(missing)} appear in no "
+                            f"token captured by {', '.join(version_claimants)} "
+                            f"({', '.join(tokens) or 'none'})",
+                        )
+                    )
+                else:
+                    outcomes.append(
+                        (
+                            "R-c",
+                            CORROBORATED,
+                            f"cited edition {', '.join(years)} present in the tokens captured "
+                            f"by {', '.join(version_claimants)}",
+                        )
+                    )
+
+        line = f"{kind} {identifier} → {day.isoformat()} — " + "; ".join(
+            f"{rule} {verdict} ({reason})" for rule, verdict, reason in outcomes
+        )
+        if any(verdict == CONTRADICTED for _, verdict, _ in outcomes):
+            contradictions += 1
+            report(line)
+        else:
+            findings.note("date corroboration: " + line)
+
+    if not contradictions:
+        findings.note(
+            f"date corroboration: all {len(advanced)} advanced date(s) corroborated"
+        )
+
+
 def use_utf8_streams() -> None:
     """Print repository text without depending on the console's code page.
 
@@ -1172,6 +1697,7 @@ def main() -> int:
     check_citation_containment(args.evidence, findings)
     check_confidentiality(files, findings)
     check_escalation_direction(args.base_ref, findings, args.bot)
+    check_date_corroboration(args.base_ref, findings, args.bot, args.evidence)
 
     for note in findings.notes:
         print(note)

@@ -75,6 +75,26 @@ fetch is not evidence of anything: leave the date alone and let the row age into
 the staleness window, where the stale guard will raise it. Never advance a date
 to make a check pass.
 
+**Stamp the date of the fetch, not the date you are writing.** The new date is
+the UTC calendar date of the claiming source's `checked_at` in the bundle — the
+first ten characters of it — even if you are adjudicating a day later, and even
+if the refresh window is several days wide. This is not a new rule so much as
+the one the matrix already publishes: *"a date set by a monthly automated
+refresh means the row's pinned source was fetched successfully on that date."*
+Writing today's date instead asserts a fetch that did not happen on the day it
+names.
+
+Where a row is claimed by several sources and they were fetched on different
+days, stamp the date of the source you are actually relying on, and say which
+one in the pull request.
+
+`scripts/validate_bot_pr.py`'s **date corroboration** check enforces this: an
+advanced date must have a claiming watched source with `ok: true` whose
+`checked_at` falls on the stamped day or the day before. The one-day tolerance
+exists for a fetch and a commit that fall either side of a UTC midnight — it is
+not room to round a date. Under `--bot` a date it cannot corroborate is a hard
+failure.
+
 ## Monthly consolidation
 
 When invoked by the monthly workflow:
@@ -112,7 +132,8 @@ justifies it. Attach or reference the evidence bundle. Then stop.
   source of a status.
 - **Never move a row out of "Requires further validation."**
 - **Never invent a last-verified date**, and never advance one for a source that
-  failed to fetch.
+  failed to fetch. Never write today's date onto a row when the fetch that backs
+  it happened on another day.
 - **Never introduce tenant-specific data**: no GUIDs, tenant or subscription
   identifiers, hostnames, user names, email addresses, screenshots, Message
   Center content, or NDA / private-preview material.
