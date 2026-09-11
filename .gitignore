@@ -23,6 +23,10 @@ __pycache__/
 # verbatim from upstream pages, and an adjudicator's `git add -A` would
 # otherwise commit it to a path outside the automated-change allowlist.
 evidence/
+# The same bundle under the root-level name the documented local procedure
+# writes it to (`--evidence-out evidence.json` in docs/agent-cadence.md and
+# CONTRIBUTING.md), which the directory rule above does not cover.
+evidence.json
 *.py[cod]
 .pytest_cache/
 
