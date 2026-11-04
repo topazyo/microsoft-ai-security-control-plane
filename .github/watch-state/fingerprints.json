@@ -1,13 +1,13 @@
 {
-  "updated_at": "2026-09-10T15:07:07Z",
+  "updated_at": "2026-11-04T17:33:26Z",
   "extractor_version": 2,
   "sources": {
     "purview-dlp-copilot": {
       "ok": true,
-      "fingerprint": "27e8cd9f5479b0c6d63ac5b188a08dafba8caf8d86abcd702b19bc912e191a15",
+      "fingerprint": "021c6d199f8b4ec9c5b5338efb4a85d57bbeb81dab68ec853d190add02e77cce",
       "signals": {
         "headings": [
-          "Learn about using Microsoft Purview Data Loss Prevention to protect interactions with Microsoft 365 Copilot and Copilot Chat",
+          "Learn about using Microsoft Purview Data Loss Prevention to protect interactions with Microsoft 365 Copilot, Copilot Chat, and Cowork",
           "Licensing",
           "Permissions",
           "Block sensitive information types in web search",
@@ -20,9 +20,10 @@
           "Block external email from being processed (preview)",
           "Block external email use case example",
           "Files uploaded in prompts",
+          "Supported conditions and actions",
+          "Customize the link in Copilot policy tips",
           "Availability",
           "Admin units",
-          "Supported conditions and actions",
           "Related content",
           "Feedback",
           "Additional resources"
@@ -34,10 +35,10 @@
           "in preview",
           "rolling out"
         ],
-        "heading_count": 19,
+        "heading_count": 20,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about",
       "matrix_rows": [
         1,
@@ -157,7 +158,7 @@
           "{'tagName': 'Worldwide (Standard Multi-Tenant)'}"
         ]
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://www.microsoft.com/en-us/microsoft-365/roadmap?id=548671",
       "matrix_rows": [
         2
@@ -185,7 +186,7 @@
         "heading_count": 9,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/data-security-posture-management-considerations",
       "matrix_rows": [
         6,
@@ -207,7 +208,7 @@
         "page_level_status_phrases": [],
         "entry_status_phrases": []
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/office365/servicedescriptions/microsoft-365-service-descriptions/microsoft-365-tenantlevel-services-licensing-guidance/microsoft-purview-service-description",
       "matrix_rows": [
         6
@@ -231,7 +232,7 @@
         "heading_count": 5,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai",
       "matrix_rows": [
         7
@@ -260,7 +261,7 @@
         "heading_count": 10,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/dspm-for-ai-considerations",
       "matrix_rows": [
         7
@@ -294,7 +295,7 @@
         "heading_count": 17,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/purview/ai-microsoft-purview",
       "matrix_rows": [
         7
@@ -323,7 +324,7 @@
         "heading_count": 12,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/risk-score",
       "matrix_rows": [
         8
@@ -354,7 +355,7 @@
         "heading_count": 12,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-cloud-apps/discovered-apps",
       "matrix_rows": [
         8
@@ -362,9 +363,10 @@
     },
     "sentinel-data-connectors-reference": {
       "ok": true,
-      "fingerprint": "5921e75446198753c49c690b75e67a932b1d4afd40b293b3af5f8f60bf2607b4",
+      "fingerprint": "5e48fe017938e66d88b370a3f213abf7f4e19da45d6adf2d77a92937ad9a5dd1",
       "signals": {
         "headings": [
+          "Dragon Copilot",
           "Microsoft Copilot",
           "Microsoft Defender for Office 365 (Preview)"
         ],
@@ -374,14 +376,14 @@
         "status_phrases_present": [
           "in preview"
         ],
-        "heading_count": 2,
+        "heading_count": 3,
         "relevance_filtered": true,
         "page_level_status_phrases": [
           "in preview"
         ],
         "entry_status_phrases": []
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/sentinel/data-connectors-reference",
       "matrix_rows": [
         9
@@ -410,7 +412,7 @@
         "heading_count": 12,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-office-365/step-by-step-guides/prompt-injection-protection-defender-for-office-365",
       "matrix_rows": [
         10
@@ -441,7 +443,7 @@
         "heading_count": 10,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/security-for-ai/ai-agent-detection-protection",
       "matrix_rows": [
         10
@@ -464,7 +466,7 @@
         "heading_count": 6,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-cloudappevents-table",
       "matrix_rows": [
         10
@@ -495,7 +497,7 @@
         "heading_count": 14,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/workload-identity",
       "matrix_rows": [
         11
@@ -527,7 +529,7 @@
         "heading_count": 11,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-users-groups",
       "matrix_rows": [
         11
@@ -535,22 +537,22 @@
     },
     "entra-ca-agent-id": {
       "ok": true,
-      "fingerprint": "dafe3d5ae4b1eb1f8c8d012b7aa3cb9a4d8332542b2a3c91b9aa8990e8d31c41",
+      "fingerprint": "30614b5dbfb8a55e449073df0fe399a079ee00d612fb6a692a9eee3ad491ad5c",
       "signals": {
         "headings": [
           "Conditional Access for agents",
-          "How Conditional Access evaluates agent access requests",
-          "How subjects and audiences are used",
+          "Requirements and licensing",
+          "How Conditional Access evaluates agent access",
           "How Conditional Access decisions are made",
           "When Conditional Access is evaluated",
           "Agent access patterns",
-          "Agents acting on behalf of a user",
-          "Agents acting as an application",
-          "Agents acting as a user",
+          "Agents that act on behalf of a user",
+          "Agents that act as applications",
+          "Agents that act as users",
           "Conditional Access policies and agent identity blueprints",
           "Attribute-driven Conditional Access",
-          "Conditional Access boundaries and limitations",
-          "Next steps",
+          "Boundaries and limitations",
+          "Related content",
           "Feedback",
           "Additional resources"
         ],
@@ -559,7 +561,7 @@
         "heading_count": 15,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/agent-id",
       "matrix_rows": [
         11
@@ -567,10 +569,10 @@
     },
     "entra-ca-target-agent-identities": {
       "ok": true,
-      "fingerprint": "07432ceb8c4b73cbca3a1763c1f930210aa6128b9cce0ed1645f1f8d84ac5b0b",
+      "fingerprint": "e423bfff144d671e98d5a5612b62052f07083714b103fc4f3d47c105a8d8976c",
       "signals": {
         "headings": [
-          "Target agent identities in Conditional Access policies",
+          "Target agent identities in Microsoft Entra Conditional Access policies",
           "Prerequisites",
           "Create a Conditional Access policy for agent identities",
           "Assignments",
@@ -597,7 +599,7 @@
         "heading_count": 19,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-target-agent-identities",
       "matrix_rows": [
         11
@@ -613,7 +615,7 @@
         "version_count": 1,
         "rejected_token_count": 0
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://atlas.mitre.org/",
       "matrix_rows": []
     },
@@ -636,7 +638,7 @@
         "version_count": 10,
         "rejected_token_count": 0
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-04T17:33:26Z",
       "cite_url": "https://genai.owasp.org/llm-top-10/",
       "matrix_rows": []
     }

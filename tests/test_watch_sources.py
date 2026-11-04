@@ -1343,9 +1343,12 @@ class CommittedBaselineInvariantTests(unittest.TestCase):
 
     def test_row_9s_source_watches_both_of_its_published_evidence_points(self):
         signals = self.stored["sentinel-data-connectors-reference"]["signals"]
+        # Exact, not a subset check: every entry the `Copilot` filter admits has to be
+        # adjudicated by name. "Dragon Copilot" (a clinical-documentation connector)
+        # was admitted at the 2026-11-04 refresh and judged unrelated to row 9.
         self.assertEqual(
             signals["headings"],
-            ["Microsoft Copilot", "Microsoft Defender for Office 365 (Preview)"],
+            ["Dragon Copilot", "Microsoft Copilot", "Microsoft Defender for Office 365 (Preview)"],
         )
         self.assertEqual(
             signals["preview_qualified_headings"],
