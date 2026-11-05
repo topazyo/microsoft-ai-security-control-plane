@@ -6,7 +6,10 @@
 # event-gated: the `adjudicate` job runs only when `detect` reports a real change.
 #
 # The `detect` job holds no secret and cannot write. Judgement never runs on an
-# unchanged source.
+# unchanged source. The `unreachable-alarm` job holds the only write token
+# outside adjudication -- `issues: write` to raise or close the alarm, beside
+# `actions: read` to find the previous run's evidence bundle -- and of the bundles
+# it downloads it reads only the failure list and error strings.
 name: Source watch
 
 on:
@@ -149,6 +152,67 @@ jobs:
           normal.
           SUMMARY
           } >> "${GITHUB_STEP_SUMMARY}"
+
+  # Issue #50. "Report unreachable sources" above is an annotation on a green run,
+  # and GitHub's default notifications cover failed workflows only, so it reached
+  # nobody: row 4's three sources failed on 42 consecutive runs before anyone
+  # knew (#47). This job turns a source that failed on two consecutive
+  # observations -- this run's bundle and the previous run's -- into an issue,
+  # and closes it on the first run that fetches every source. One failure alone
+  # never notifies. The policy and its fail-closed lookup live in the script so
+  # they can be unit-tested; see its docstring and docs/agent-cadence.md.
+  #
+  # It runs on every run, including clean ones. That is deliberate: the lookup
+  # is exercised daily, so if it breaks the run goes red the next morning
+  # instead of the breakage waiting, unseen, for the day an alarm is needed.
+  # `needs: detect` makes a crashed detect skip this job -- that run is already
+  # red, and it has no bundle to read.
+  unreachable-alarm:
+    name: Alarm on sources unreachable on consecutive runs
+    needs: detect
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      # No git operation follows, so the issues-write token is not left in
+      # .git/config for the rest of the job.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Download this run's evidence bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: evidence-bundle
+          path: evidence
+
+      # Context values reach the script through `env:`, never spliced into the
+      # command line: a branch name is attacker-shaped text (`$(id)` is a valid
+      # ref), and an expression inside `run:` is substituted before bash parses
+      # it. The default branch is asked of the API by the script, because
+      # `github.event.repository` is absent from a `schedule` payload -- the
+      # one event this job exists for.
+      - name: Raise, update or close the unreachable-source alarm
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          python3 scripts/unreachable_alarm.py \
+            --evidence evidence/evidence.json \
+            --repo "${REPO}" \
+            --run-id "${RUN_ID}" \
+            --ref "${REF_NAME}" \
+            --server-url "${SERVER_URL}"
 
   # Deferred rather than failed: while no ANTHROPIC_API_KEY is configured, tier D2
   # is operated by hand (docs/agent-cadence.md, "Running tiers D2 and D3

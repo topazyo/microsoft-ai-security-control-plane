@@ -416,6 +416,53 @@ stale guard raises it. A fetch failure routes into the repository's own stalenes
 rule rather than needing separate error handling, and one unreachable source
 degrades exactly one evidence item.
 
+### An unreachable source raises its own alarm
+
+**Staleness alone was too slow, and the row 4 outage is the measurement.** Its
+three sources returned HTTP 404 on every daily run from 2026-09-24 to
+2026-11-04, 42 runs, and every run concluded green. The watcher exits 0 on a
+failed fetch by design, and the only per-run signal was a `::warning::`
+annotation, which notifies nobody. The loss surfaced through staleness six
+weeks later (issue #47). The rule above still holds; it no longer stands alone.
+
+The `unreachable-alarm` job in `source-watch.yml` runs
+`scripts/unreachable_alarm.py` after every detection run (issue #50):
+
+- **Confirmation needs two consecutive observations.** A source in this run's
+  `failed_sources` *and* in the previous run's evidence bundle is confirmed
+  unreachable. A single failure never notifies. A manual dispatch counts as an
+  observation, so two dispatches during a short outage can confirm one; that is
+  the human's choice to make. No transient failure occurred in the 91 runs
+  measured on 2026-11-05, so the threshold buys quiet at the cost of about a day.
+- **Three actions.** It opens an issue, titled *Unreachable sources: failing on
+  consecutive watch runs*, when something is confirmed. While the issue is open,
+  each run rewrites its body silently and comments only when the confirmed set
+  changes, so a long outage is one notification plus one per change. It closes
+  the issue only on positive evidence: a run that fetched **every** source, or
+  two real consecutive observations that confirm nothing.
+- **A missing observation holds; a broken lookup is red.** The previous
+  observation is the newest earlier run on the same branch whose `detect` job
+  succeeded. If there is none within five runs, the job opens nothing and
+  shrinks nothing, though a run that fetched every source still closes an open
+  alarm. While an alarm is open, the alarm's own record stands in for a missing
+  observation, for sources it already confirmed only. Any `gh` failure that
+  survives one retry of a read, an unparseable bundle, or a successful `detect`
+  with no `evidence-bundle` makes the run red. Each of those means the mechanism
+  is broken, or a bundle has expired after 30 days without a run, and a silent
+  restart would keep the alarm from ever firing.
+- **Branch-scoped.** Off the default branch the title gains `[branch: <name>]`,
+  so exercising the alarm on a throwaway branch can never open or close the real
+  one.
+
+It runs on clean days too, deliberately. A lookup that breaks shows up as a red
+run the next morning, rather than waiting unseen for the day an alarm is needed.
+It does not cover a watcher that stops running altogether, such as a schedule
+GitHub disabled after 60 inactive days: no run means no alarm, and the stale
+guard remains the backstop for that.
+
+**Do not re-baseline to quiet the alarm.** Repoint or remove the dead source,
+the way #49 moved row 4's sources to the Learn pages they cite.
+
 ## What automation is forbidden to touch
 
 **The Microsoft 365 Message Center is never fetched.** Message Center posts are
