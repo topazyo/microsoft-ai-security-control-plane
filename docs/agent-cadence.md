@@ -442,10 +442,9 @@ in `scripts/validate_bot_pr.py` enforces that, so it is a gate rather than a
 convention.
 
 Stated at that width deliberately, because the wider claim would be false: the
-watched array is not Learn-only. Four entries fetch Markdown from
-`raw.githubusercontent.com` — the MicrosoftDocs repositories that Learn itself
-renders — one fetches the OWASP GenAI landing page, and one the public Microsoft
-365 Roadmap. What the containment buys is narrower and still worth having:
+watched array is not Learn-only. One entry fetches MITRE's ATLAS data from
+`raw.githubusercontent.com`, one fetches the OWASP GenAI landing page, and one
+the public Microsoft 365 Roadmap. What the containment buys is narrower and still worth having:
 admitting `docs.github.com` to the citation allowlist (decision D3) widened what
 this repository may *cite*, and keeping those entries out of `sources` stops
 that admission from also widening what an automated run may *fetch and

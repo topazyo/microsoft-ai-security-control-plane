@@ -274,6 +274,113 @@ class HtmlScopingTests(unittest.TestCase):
         )
 
 
+# RELEASE_NOTES as Microsoft Learn renders it, reduced from the live Defender for
+# Cloud release notes on 2026-11-05: an <h1> inside <main>, Learn's in-topic
+# table of contents as a <nav> around an <h2>, an <h2> per month, a dated index
+# <table> whose links repeat the entry titles, then one <h3> per entry. The
+# visible text is RELEASE_NOTES' text, so both renderings must give one signal.
+#
+# The index table is the part with no markdown counterpart worth pinning: it
+# repeats "AI" entry titles inside the out-of-scope month section, and gives the
+# SQL entry a "Deprecated" status cell that must stay out of the phrase set.
+RELEASE_NOTES_HTML = """<!DOCTYPE html><html><head><title>What's new</title>
+<script>window.config = {"status": "in preview"};</script></head><body>
+<header><a href="/">Learn</a> Release state rolling out</header>
+<main id="main">
+<h1 id="whats-new">What's new in Microsoft Defender for Cloud</h1>
+<nav aria-label="In this article"><h2 id="ms--in-this-article">In this article</h2>
+<ol><li><a href="#september-2026">September 2026</a></li></ol></nav>
+<p>This article summarizes what's new in Microsoft Defender for Cloud.</p>
+<h2 id="september-2026">September 2026</h2>
+<table><thead><tr><th>Date</th><th>Category</th><th>Update</th></tr></thead><tbody>
+<tr><td>September 9, 2026</td><td>Preview</td>
+<td><a href="#ai-spm-foundry">AI security posture management for Azure AI Foundry (Preview)</a></td></tr>
+<tr><td>September 8, 2026</td><td>Deprecated</td>
+<td><a href="#classic-sql-apis">Classic Defender for SQL APIs retirement</a></td></tr>
+</tbody></table>
+<h3 id="ai-spm-foundry">AI security posture management for Azure AI Foundry (Preview)</h3>
+<p>AI security posture management now covers Foundry agents. This capability is in preview.</p>
+<h3 id="classic-sql-apis">Classic Defender for SQL APIs retirement</h3>
+<p>The classic Defender for SQL APIs for Vulnerability Assessment and Advanced
+Threat Protection is documented here.</p>
+</main>
+<footer>Previous versions are retired.</footer>
+</body></html>"""
+
+
+class LearnHtmlReleaseNotesTests(unittest.TestCase):
+    """Issue #47: row 4's release-notes sources moved from raw markdown to Learn HTML.
+
+    The public MicrosoftDocs/defender-docs mirror they fetched went away on
+    2026-09-24, so they now read the rendered Learn page, as `purview-dlp-copilot`
+    always has. Their `relevance_filter` was designed, and its "APIs" non-match
+    pinned, against markdown. These tests pin the same behaviour on the html
+    extractor, so a later html-only change cannot quietly widen or empty what
+    row 4 is watched through. On the live pages the switch reproduced both
+    stored markdown fingerprints exactly; the parity test is that fact in small.
+    """
+
+    def test_html_rendering_gives_the_markdown_signal(self):
+        self.assertEqual(html_signals(RELEASE_NOTES_HTML), markdown_signals(RELEASE_NOTES))
+
+    def test_page_level_banner_is_in_scope_on_html(self):
+        """The lead-in sits after Learn's "In this article" <nav>, which must not own it.
+
+        The html half of `test_page_level_banner_is_in_scope`, and the case
+        issue #31 was about: if that <nav> stopped counting as chrome, its <h2>
+        would take the lead-in out of page-level scope.
+        """
+        lead_in = "This article summarizes what's new in Microsoft Defender for Cloud."
+        banner = "This article summarizes what's new. Some features are in development."
+        html = html_signals(RELEASE_NOTES_HTML.replace(lead_in, banner))
+        self.assertEqual(html, markdown_signals(RELEASE_NOTES.replace(lead_in, banner)))
+        self.assertEqual(html["page_level_status_phrases"], ["in development"])
+
+    def test_sql_apis_entry_is_filtered_out_on_html(self):
+        signals = html_signals(RELEASE_NOTES_HTML)
+        self.assertEqual(
+            signals["headings"],
+            ["AI security posture management for Azure AI Foundry (Preview)"],
+        )
+        self.assertEqual(
+            signals["preview_qualified_headings"],
+            ["AI security posture management for Azure AI Foundry (Preview)"],
+        )
+
+    def test_index_table_and_chrome_stay_out_of_the_phrase_set(self):
+        """'deprecated' sits in the index table; the rest sits in removed chrome."""
+        signals = html_signals(RELEASE_NOTES_HTML)
+        self.assertEqual(signals["status_phrases_present"], ["in preview"])
+        self.assertEqual(signals["page_level_status_phrases"], [])
+        self.assertEqual(signals["entry_status_phrases"], ["in preview"])
+
+    def test_out_of_scope_retirement_notice_reports_no_change_on_html(self):
+        before = html_signals(RELEASE_NOTES_HTML)
+        after = html_signals(
+            RELEASE_NOTES_HTML.replace(
+                "Threat Protection is documented here.",
+                "Threat Protection will be retired on August 16, 2027.",
+            )
+        )
+        self.assertEqual(watch.fingerprint(before), watch.fingerprint(after))
+        self.assertEqual(watch.describe_change(before, after), [])
+
+    def test_in_scope_status_change_is_detected_on_html(self):
+        before = html_signals(RELEASE_NOTES_HTML)
+        after = html_signals(
+            RELEASE_NOTES_HTML.replace(
+                "This capability is in preview.", "This capability is generally available."
+            )
+        )
+        notes = watch.describe_change(before, after)
+        self.assertIn(
+            "status phrase appeared in in-scope entries: 'generally available'", notes
+        )
+        self.assertIn(
+            "status phrase disappeared from in-scope entries: 'in preview'", notes
+        )
+
+
 # The shape that exposed the defect, reduced from the live Sentinel data
 # connectors reference: the release-state word is wrapped in a link, so the
 # phrase a reader sees as continuous was split by a tag.

@@ -49,23 +49,24 @@
     },
     "defender-ai-threat-protection": {
       "ok": true,
-      "fingerprint": "1f11f39c7ed946990ca95f353056249ed1ca0d18699d691f557b342881b8081f",
+      "fingerprint": "10d694e26b2c11baf0e33dd90820f3e53332e65213bb0f0d57defdf768180c92",
       "signals": {
         "headings": [
           "AI threat protection in Microsoft Defender for Cloud",
           "Defender XDR integration",
           "Availability",
-          "Related content"
+          "Related content",
+          "Additional resources"
         ],
         "preview_qualified_headings": [],
         "status_phrases_present": [
           "generally available",
           "release state"
         ],
-        "heading_count": 4,
+        "heading_count": 5,
         "relevance_filtered": false
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-05T10:05:50Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
       "matrix_rows": [
         4
@@ -97,7 +98,7 @@
           "in preview"
         ]
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-05T10:05:50Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
       "matrix_rows": [
         4
@@ -136,7 +137,7 @@
           "in preview"
         ]
       },
-      "checked_at": "2026-09-10T15:07:07Z",
+      "checked_at": "2026-11-05T10:05:50Z",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
       "matrix_rows": [
         4

@@ -929,9 +929,9 @@ class HumanOnlyContainmentTests(unittest.TestCase):
     the model tier.
 
     Scoped to GitHub Docs deliberately, matching the docstring on the check
-    itself. The watched array is not Learn-only -- four entries fetch from
-    `raw.githubusercontent.com`, one from the OWASP GenAI site and one from the
-    public Microsoft 365 Roadmap -- so "non-Learn content" claims a containment
+    itself. The watched array is not Learn-only -- one entry fetches MITRE's
+    ATLAS data from `raw.githubusercontent.com`, one the OWASP GenAI site and one
+    the public Microsoft 365 Roadmap -- so "non-Learn content" claims a containment
     this check does not provide.
     """
 
