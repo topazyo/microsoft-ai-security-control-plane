@@ -6,10 +6,10 @@
 # event-gated: the `adjudicate` job runs only when `detect` reports a real change.
 #
 # The `detect` job holds no secret and cannot write. Judgement never runs on an
-# unchanged source. The `unreachable-alarm` job holds the only token used outside
-# adjudication -- `actions: read` to find the previous run's evidence bundle and
-# `issues: write` to raise or close the alarm -- and never sees fetched content
-# beyond the bundle's failure list and error strings.
+# unchanged source. The `unreachable-alarm` job holds the only write token
+# outside adjudication -- `issues: write` to raise or close the alarm, beside
+# `actions: read` to find the previous run's evidence bundle -- and of the bundles
+# it downloads it reads only the failure list and error strings.
 name: Source watch
 
 on:
@@ -176,7 +176,11 @@ jobs:
       actions: read
       issues: write
     steps:
+      # No git operation follows, so the issues-write token is not left in
+      # .git/config for the rest of the job.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v7
         with:

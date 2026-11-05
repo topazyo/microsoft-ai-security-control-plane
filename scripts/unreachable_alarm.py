@@ -24,9 +24,9 @@ live alarm or kept the alarm from ever firing, on a green run. Those are the two
 fail-quiet shapes this script exists to remove, so the state machine below is
 built around them:
 
-* **Close needs positive evidence from this run alone**: an empty
-  `failed_sources` in a bundle that lists sources. A missing or unusable
-  previous observation can never close an alarm.
+* **Close needs positive evidence**: an empty `failed_sources` in a bundle that
+  lists sources, or two real consecutive observations that confirm nothing. A
+  missing or unusable previous observation can never close an alarm.
 * **A missing previous observation holds; a broken lookup is red.** Only "no
   earlier completed run on this branch within the bound" holds. Any `gh` error,
   an unparseable bundle, or a previous run whose `detect` job succeeded but has no
@@ -49,6 +49,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,14 +79,30 @@ class AlarmError(Exception):
 Gh = Callable[[list[str]], str]
 
 
+# Calls that change nothing, and so may be repeated. An issue write is never
+# retried: one that succeeded but reported failure would be repeated as a
+# duplicate issue or comment.
+READ_ONLY = {("api",), ("run", "list"), ("run", "view"), ("run", "download"), ("issue", "list")}
+RETRY_DELAY_SECONDS = 10
+
+
 def run_gh(args: list[str]) -> str:
-    """Run the GitHub CLI; any non-zero exit is an AlarmError, never a default."""
-    completed = subprocess.run(
-        ["gh", *args], capture_output=True, text=True, encoding="utf-8", check=False
-    )
-    if completed.returncode != 0:
-        raise AlarmError(f"gh {' '.join(args[:2])} failed: {completed.stderr.strip()}")
-    return completed.stdout
+    """Run the GitHub CLI; any non-zero exit is an AlarmError, never a default.
+
+    A read-only call is retried once. The job runs on clean days too, so a single
+    5xx from the API would otherwise turn a healthy morning red; a second failure
+    is still red.
+    """
+    attempts = 2 if (tuple(args[:1]) in READ_ONLY or tuple(args[:2]) in READ_ONLY) else 1
+    for attempt in range(attempts):
+        completed = subprocess.run(
+            ["gh", *args], capture_output=True, text=True, encoding="utf-8", check=False
+        )
+        if completed.returncode == 0:
+            return completed.stdout
+        if attempt + 1 < attempts:
+            time.sleep(RETRY_DELAY_SECONDS)
+    raise AlarmError(f"gh {' '.join(args[:2])} failed: {completed.stderr.strip()}")
 
 
 # --------------------------------------------------------------------------
@@ -173,9 +190,14 @@ def previous_observation(gh: Gh, repo: str, run_id: str, ref: str) -> tuple[str,
             try:
                 gh(["run", "download", candidate_id, "-R", repo, "-n", ARTIFACT, "-D", directory])
             except AlarmError as exc:
+                # Red either way, but the message must not guess which. Missing
+                # means the chain is broken; expired means no run happened for 30
+                # days (a schedule GitHub disabled, then re-enabled), which the
+                # next run repairs by itself.
                 raise AlarmError(
                     f"run {candidate_id}'s detect job succeeded but its {ARTIFACT!r} artifact "
-                    f"could not be downloaded; a broken chain is not an expiry: {exc}"
+                    f"could not be downloaded (missing, or expired after the bundle's 30-day "
+                    f"retention); not treated as 'nothing to compare': {exc}"
                 ) from exc
             return candidate_id, load_bundle(Path(directory) / BUNDLE_FILE)
     return None
@@ -214,6 +236,15 @@ def decide(current_failed: set[str], previous_failed: set[str] | None, issue: di
     open alarm's own marker stands in for it, for the sources it already
     confirmed and nothing else, so a gap neither opens a new alarm nor shrinks a
     live one.
+
+    Two things close an open alarm, and both are positive evidence:
+
+    * this run fetched every source; or
+    * two real, consecutive observations confirm nothing. Without that second
+      rule, an alarm whose sources had all recovered stayed open as long as
+      some *other* source kept failing on alternate runs, never twice in a row,
+      saying "No source is confirmed" indefinitely. With no previous observation
+      this rule cannot apply, and the marker holds the alarm instead.
     """
     already = alarmed_in(issue.get("body")) if issue else set()
     evidence = previous_failed if previous_failed is not None else already
@@ -222,6 +253,8 @@ def decide(current_failed: set[str], previous_failed: set[str] | None, issue: di
         return Decision("close" if issue else "none")
     if issue is None:
         return Decision("open", confirmed) if confirmed else Decision("none")
+    if not confirmed and previous_failed is not None:
+        return Decision("close")
     # Open, and this run still has failures: rewrite the live state. Opening a
     # new issue already notifies, so only a *change* in what is confirmed earns a
     # comment -- a 42-day outage is one notification plus one per change.
@@ -250,9 +283,13 @@ def render_body(
         for source_id in sorted(decision.confirmed):
             entry = entries.get(source_id, {})
             rows = ", ".join(str(r) for r in entry.get("matrix_rows", [])) or "none"
-            before = (previous or {}).get(source_id, "not observed (alarm already open)")
+            before = (
+                code_span((previous or {})[source_id])
+                if source_id in (previous or {})
+                else "not observed (alarm already open)"
+            )
             lines.append(
-                f"| `{source_id}` | {rows} | {current.get(source_id, '')} | {before} "
+                f"| `{source_id}` | {rows} | {code_span(current.get(source_id, ''))} | {before} "
                 f"| {entry.get('cite_url', '')} |"
             )
     else:
@@ -260,7 +297,7 @@ def render_body(
     unconfirmed = sorted(set(current) - decision.confirmed)
     if unconfirmed:
         lines += ["", "Failed this run only, not yet confirmed: "
-                  + ", ".join(f"`{s}` ({current[s]})" for s in unconfirmed) + "."]
+                  + ", ".join(f"`{s}` ({code_span(current[s])})" for s in unconfirmed) + "."]
     lines += [
         "",
         f"Latest run: {run_url}",
@@ -273,15 +310,36 @@ def render_body(
         "_Raised by `scripts/unreachable_alarm.py`. A source is confirmed after failing on",
         "two consecutive observations; a manual dispatch counts as one. The body is",
         "rewritten every run, a comment is added only when the confirmed set changes,",
-        "and the issue closes itself on the first run that fetches every source._",
+        "and the issue closes itself on the first run that fetches every source, or",
+        "once two consecutive observations confirm nothing._",
     ]
     return "\n".join(lines) + "\n"
+
+
+def code_span(text: str) -> str:
+    """Render an error string inertly inside a table cell.
+
+    The error is `f"{type(exc).__name__}: {exc}"`, and part of it can come from
+    the server -- a reason phrase, a URL. A `|` or a newline would break the
+    table row, and outside a code span an `@name` would notify a real account.
+    """
+    flat = " ".join(text.replace("`", "'").split()).replace("|", "\\|")
+    return f"`{flat}`" if flat else ""
 
 
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
-def act(gh: Gh, repo: str, title: str, decision: Decision, issue: dict | None, body: str, run_url: str) -> str:
+def act(
+    gh: Gh,
+    repo: str,
+    title: str,
+    decision: Decision,
+    issue: dict | None,
+    body: str,
+    run_url: str,
+    current: dict[str, str],
+) -> str:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "body.md"
         path.write_text(body, encoding="utf-8")
@@ -297,9 +355,14 @@ def act(gh: Gh, repo: str, title: str, decision: Decision, issue: dict | None, b
             return f"updated #{number}; the confirmed set is unchanged"
         if decision.action == "close":
             number = str(issue["number"])
-            gh(["issue", "close", number, "-R", repo, "--comment",
-                f"Every watched source fetched on this run, so this episode is over: {run_url}"])
-            return f"closed #{number}: every source fetched"
+            if current:
+                reason = ("No source has failed on two consecutive observations any more, so "
+                          "this episode is over. Failing on this run only, not confirmed: "
+                          + ", ".join(f"`{s}`" for s in sorted(current)) + ".")
+            else:
+                reason = "Every watched source fetched on this run, so this episode is over."
+            gh(["issue", "close", number, "-R", repo, "--comment", f"{reason} {run_url}"])
+            return f"closed #{number}: " + ("nothing confirmed" if current else "every source fetched")
     return "no alarm: nothing is confirmed unreachable and none is open"
 
 
@@ -351,7 +414,7 @@ def main(argv: list[str] | None = None, gh: Gh = run_gh) -> int:
             print(f"[dry-run] {decision.action} confirmed={sorted(decision.confirmed)} "
                   f"comment={decision.comment}")
             return 0
-        outcome = act(gh, args.repo, title, decision, issue, body, run_url)
+        outcome = act(gh, args.repo, title, decision, issue, body, run_url, current)
     except AlarmError as exc:
         print(f"::error::Unreachable-source alarm could not run: {exc}", file=sys.stderr)
         return 1

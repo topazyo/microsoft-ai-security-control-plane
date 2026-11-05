@@ -115,6 +115,13 @@ def run(created: str, run_id: int, conclusion: str = "success") -> dict:
     return {"databaseId": run_id, "createdAt": created, "conclusion": conclusion}
 
 
+def temp_dir(case: unittest.TestCase) -> Path:
+    """A directory removed when the test ends."""
+    holder = tempfile.TemporaryDirectory()
+    case.addCleanup(holder.cleanup)
+    return Path(holder.name)
+
+
 class DecisionTests(unittest.TestCase):
     """The policy table. Each row is one sentence of the script's docstring."""
 
@@ -162,6 +169,14 @@ class DecisionTests(unittest.TestCase):
 
     def test_a_clean_run_with_no_alarm_does_nothing(self):
         self.assertEqual(alarm.decide(set(), {A}, None).action, "none")
+
+    def test_two_observations_confirming_nothing_close_a_recovered_alarm(self):
+        """Review low finding: A recovered while B flaps, so no run is fully clean."""
+        self.assertEqual(alarm.decide({B}, {A}, issue(A)).action, "close")
+
+    def test_without_a_previous_observation_that_rule_cannot_close(self):
+        decision = alarm.decide({B}, None, issue(A))
+        self.assertEqual((decision.action, decision.confirmed), ("edit", set()))
 
 
 class LookupTests(unittest.TestCase):
@@ -242,7 +257,7 @@ class LookupTests(unittest.TestCase):
     def test_a_missing_bundle_behind_a_successful_detect_is_red(self):
         """Review B2: a broken chain must not read as 'nothing to compare'."""
         gh = FakeGh(runs=[run("2026-09-24T06:30:00Z", 800)], jobs={"800": detect_job()})
-        with self.assertRaisesRegex(alarm.AlarmError, "broken chain is not an expiry"):
+        with self.assertRaisesRegex(alarm.AlarmError, "not treated as 'nothing to compare'"):
             self.lookup(gh)
 
     def test_a_gh_failure_is_red_not_a_hold(self):
@@ -263,14 +278,13 @@ class BundleTests(unittest.TestCase):
     """A bundle that could fake a recovery is an error, never an empty failure list."""
 
     def write(self, text: str) -> Path:
-        directory = tempfile.mkdtemp()
-        path = Path(directory) / "evidence.json"
+        path = temp_dir(self) / "evidence.json"
         path.write_text(text, encoding="utf-8")
         return path
 
     def test_fail_closed_shapes(self):
         cases = {
-            "missing": Path(tempfile.mkdtemp()) / "absent.json",
+            "missing": temp_dir(self) / "absent.json",
             "unparseable": self.write("{not json"),
             "no sources": self.write(json.dumps({"failed_sources": [], "sources": {}})),
             "no failure list": self.write(json.dumps({"sources": {A: {"ok": True}}})),
@@ -309,6 +323,16 @@ class IssueTests(unittest.TestCase):
         self.assertIn("| 4 |", body)
         self.assertIn("https://learn.microsoft.com/a", body)
 
+    def test_error_text_is_rendered_inertly(self):
+        """Server-supplied text must not break the table or notify an account."""
+        hostile = "HTTPError: bad | gateway\nping @someone `x`"
+        body = alarm.render_body(alarm.Decision("open", {A}), {A: hostile}, {A: hostile},
+                                 REGISTRY, "https://example.invalid/run")
+        row = next(line for line in body.splitlines() if line.startswith(f"| `{A}`"))
+        # Five cells, four separators; an unescaped `|` in the error adds more.
+        self.assertEqual(row.count(" | "), 4, row)
+        self.assertIn("`HTTPError: bad \\| gateway ping @someone 'x'`", row)
+
     def test_unconfirmed_failures_are_named_but_not_marked(self):
         body = alarm.render_body(alarm.Decision("edit", {A}), {A: ERROR_404, B: "TimeoutError: timed out"},
                                  None, REGISTRY, "https://example.invalid/run")
@@ -319,13 +343,13 @@ class IssueTests(unittest.TestCase):
 class MainTests(unittest.TestCase):
     """End to end through `main`, with the fake standing in for GitHub."""
 
-    def call(self, gh: FakeGh, current: dict, *extra: str) -> int:
-        directory = Path(tempfile.mkdtemp())
+    def call(self, gh: FakeGh, current: dict, *extra: str, ref: str = "main") -> int:
+        directory = temp_dir(self)
         evidence = directory / "evidence.json"
         evidence.write_text(json.dumps(current), encoding="utf-8")
         registry = directory / "sources.json"
         registry.write_text(json.dumps(REGISTRY), encoding="utf-8")
-        argv = ["--evidence", str(evidence), "--repo", "o/r", "--run-id", "900", "--ref", "main",
+        argv = ["--evidence", str(evidence), "--repo", "o/r", "--run-id", "900", "--ref", ref,
                 "--registry", str(registry), *extra]
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             return alarm.main(argv, gh=gh)
@@ -350,6 +374,38 @@ class MainTests(unittest.TestCase):
         gh = self.history(bundle(A), issues=[issue(A)])
         self.assertEqual(self.call(gh, bundle()), 0)
         self.assertEqual(gh.issue_writes(), ["issue close"])
+        close = next(call for call in gh.calls if call[:2] == ["issue", "close"])
+        self.assertEqual(close[2], "51")
+        self.assertIn("Every watched source fetched", close[close.index("--comment") + 1])
+
+    def test_an_unchanged_alarm_is_edited_without_a_comment(self):
+        gh = self.history(bundle(A), issues=[issue(A)])
+        self.assertEqual(self.call(gh, bundle(A)), 0)
+        self.assertEqual(gh.issue_writes(), ["issue edit"])
+
+    def test_a_grown_alarm_is_edited_and_commented(self):
+        """Review: deleting the comment call used to pass every test."""
+        gh = self.history(bundle(A, B), issues=[issue(A)])
+        self.assertEqual(self.call(gh, bundle(A, B)), 0)
+        self.assertEqual(gh.issue_writes(), ["issue edit", "issue comment"])
+        writes = [call for call in gh.calls if call[0] == "issue" and call[1] != "list"]
+        self.assertEqual([call[2] for call in writes], ["51", "51"])
+
+    def test_a_branch_run_never_touches_the_real_alarm(self):
+        """Review: scoping was only tested on alarm_title(), not through main()."""
+        gh = self.history(bundle(A, B), issues=[issue(A)])
+        self.assertEqual(self.call(gh, bundle(A, B), ref="chore/x"), 0)
+        self.assertEqual(gh.issue_writes(), ["issue create"])
+        create = next(call for call in gh.calls if call[:2] == ["issue", "create"])
+        self.assertEqual(create[create.index("--title") + 1], f"{alarm.TITLE} [branch: chore/x]")
+
+    def test_a_close_without_a_clean_run_says_so(self):
+        gh = self.history(bundle(A), issues=[issue(A)])
+        self.assertEqual(self.call(gh, bundle(B)), 0)
+        close = next(call for call in gh.calls if call[:2] == ["issue", "close"])
+        comment = close[close.index("--comment") + 1]
+        self.assertNotIn("Every watched source fetched", comment)
+        self.assertIn(f"`{B}`", comment)
 
     def test_dry_run_writes_nothing(self):
         gh = self.history(bundle(A, B))
@@ -371,6 +427,36 @@ class MainTests(unittest.TestCase):
         gh = self.history(bundle(A, B))
         self.call(gh, bundle(A, B))
         self.assertIn(["api", "repos/o/r"], gh.calls)
+
+
+class RetryTests(unittest.TestCase):
+    """One retry for a read, none for a write."""
+
+    def setUp(self):
+        self.calls = 0
+        self.real_run, self.real_sleep = alarm.subprocess.run, alarm.time.sleep
+        alarm.time.sleep = lambda seconds: None
+
+        def failing(*args, **kwargs):
+            self.calls += 1
+            return alarm.subprocess.CompletedProcess(args, 1, stdout="", stderr="HTTP 502")
+
+        alarm.subprocess.run = failing
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        alarm.subprocess.run, alarm.time.sleep = self.real_run, self.real_sleep
+
+    def test_a_read_is_retried_once_then_red(self):
+        with self.assertRaises(alarm.AlarmError):
+            alarm.run_gh(["run", "list", "-R", "o/r"])
+        self.assertEqual(self.calls, 2)
+
+    def test_a_write_is_never_retried(self):
+        """A retried create that had in fact succeeded would open a duplicate issue."""
+        with self.assertRaises(alarm.AlarmError):
+            alarm.run_gh(["issue", "create", "-R", "o/r"])
+        self.assertEqual(self.calls, 1)
 
 
 class BacktestTests(unittest.TestCase):
@@ -477,6 +563,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("shell: bash", step)
         run_body = step[step.index("run: |"):]
         self.assertNotIn("${{", run_body, "context values must reach the script through env:")
+
+    def test_the_alarm_job_cannot_be_made_non_blocking(self):
+        """Review: `continue-on-error` or a job `if:` would turn red back into green.
+
+        Every broken lookup is meant to be a red run, and the job runs on clean
+        days so that a broken lookup surfaces the next morning. Either key undoes
+        one of those without failing anything else.
+        """
+        job_level = [line for line in self.alarm_job.splitlines() if re.match(r"^    \S", line)]
+        self.assertFalse([line for line in job_level if line.strip().startswith("if:")], job_level)
+        self.assertNotIn("continue-on-error", self.alarm_job)
+
+    def test_the_alarm_checkout_keeps_no_credentials(self):
+        self.assertIn("persist-credentials: false", self.alarm_job)
 
     def test_the_job_block_helper_is_not_vacuous(self):
         """Guard the guard: an absent job must read as empty, not as everything."""

@@ -438,15 +438,18 @@ The `unreachable-alarm` job in `source-watch.yml` runs
   consecutive watch runs*, when something is confirmed. While the issue is open,
   each run rewrites its body silently and comments only when the confirmed set
   changes, so a long outage is one notification plus one per change. It closes
-  the issue only when a run fetched **every** source.
+  the issue only on positive evidence: a run that fetched **every** source, or
+  two real consecutive observations that confirm nothing.
 - **A missing observation holds; a broken lookup is red.** The previous
   observation is the newest earlier run on the same branch whose `detect` job
-  succeeded. If there is none within five runs, the job holds and closes
-  nothing. While an alarm is open, the alarm's own record stands in for a missing
-  observation, for sources it already confirmed only. Any `gh` failure, an
-  unparseable bundle, or a successful `detect` with no `evidence-bundle` makes
-  the run red. Each of those means the mechanism is broken, and a silent restart
-  would keep the alarm from ever firing.
+  succeeded. If there is none within five runs, the job opens nothing and
+  shrinks nothing, though a run that fetched every source still closes an open
+  alarm. While an alarm is open, the alarm's own record stands in for a missing
+  observation, for sources it already confirmed only. Any `gh` failure that
+  survives one retry of a read, an unparseable bundle, or a successful `detect`
+  with no `evidence-bundle` makes the run red. Each of those means the mechanism
+  is broken, or a bundle has expired after 30 days without a run, and a silent
+  restart would keep the alarm from ever firing.
 - **Branch-scoped.** Off the default branch the title gains `[branch: <name>]`,
   so exercising the alarm on a throwaway branch can never open or close the real
   one.
