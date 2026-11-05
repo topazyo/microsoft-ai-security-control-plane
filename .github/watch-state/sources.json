@@ -15,31 +15,31 @@
     {
       "id": "defender-ai-threat-protection",
       "title": "AI threat protection in Microsoft Defender for Cloud",
-      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/ai-threat-protection.md",
+      "url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-threat-protection",
-      "mode": "markdown",
+      "mode": "html",
       "matrix_rows": [4],
-      "note": "Backing docs repository MicrosoftDocs/defender-docs is public (raw fetch returned HTTP 200 on 2026-08-07). Watching the source markdown avoids rendered-page navigation churn entirely. cite_url is the Microsoft Learn URL that must appear in the matrix; the raw URL is a fetch mechanism only and is never cited as a primary source."
+      "note": "Watched as rendered HTML since 2026-11-05 (issue #47). This source used to fetch raw markdown from the public MicrosoftDocs/defender-docs mirror, which returned HTTP 404 from 2026-09-24 and is gone as a repository (gh api: 404 on 2026-11-04); the Learn page's original_content_git_url now names the private MicrosoftDocs/defender-docs-pr, so there is no public markdown to fetch. Same arrangement as purview-dlp-copilot. Re-probe periodically: if a public mirror reappears, switch mode back to 'markdown'."
     },
     {
       "id": "defender-release-notes",
       "title": "Microsoft Defender for Cloud release notes",
-      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/release-notes.md",
+      "url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes",
-      "mode": "markdown",
+      "mode": "html",
       "matrix_rows": [4],
       "relevance_filter": ["\\bAI\\b", "\\bFoundry\\b", "artificial intelligence"],
-      "note": "Carries the dated GA / Preview entries that evidence row 4's status dates. This page also carries dozens of release notes for products outside this repository's scope (containers, SQL, Kubernetes); without relevance_filter the fingerprint would change on almost every run and the detector would escalate constantly for entries that cannot affect any matrix row."
+      "note": "Carries the dated GA / Preview entries that evidence row 4's status dates. This page also carries dozens of release notes for products outside this repository's scope (containers, SQL, Kubernetes); without relevance_filter the fingerprint would change on almost every run and the detector would escalate constantly for entries that cannot affect any matrix row. Watched as rendered HTML since 2026-11-05 because the public markdown mirror is gone (issue #47, see defender-ai-threat-protection); the html extractor reproduced the 2026-09-10 markdown fingerprint exactly."
     },
     {
       "id": "defender-release-notes-archive",
       "title": "Microsoft Defender for Cloud release notes archive",
-      "url": "https://raw.githubusercontent.com/MicrosoftDocs/defender-docs/public/defender-for-cloud/release-notes-archive.md",
+      "url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
       "cite_url": "https://learn.microsoft.com/en-us/azure/defender-for-cloud/release-notes-archive",
-      "mode": "markdown",
+      "mode": "html",
       "matrix_rows": [4],
       "relevance_filter": ["\\bAI\\b", "\\bFoundry\\b", "artificial intelligence"],
-      "note": "Holds the dated 'General Availability for Defender for AI Services - May 1, 2025' entry that row 4's GA date rests on. Added on 2026-08-07 after the citation-containment validator found this URL cited in the matrix but absent from the registry."
+      "note": "Holds the dated 'General Availability for Defender for AI Services - May 1, 2025' entry that row 4's GA date rests on. Added on 2026-08-07 after the citation-containment validator found this URL cited in the matrix but absent from the registry. Watched as rendered HTML since 2026-11-05 because the public markdown mirror is gone (issue #47, see defender-ai-threat-protection); the html extractor reproduced the 2026-09-10 markdown fingerprint exactly."
     },
     {
       "id": "m365-roadmap-548671",

@@ -147,9 +147,9 @@ ALLOWED_SOURCE_HOSTS = [
     # condition is now a gate rather than a convention: a docs.github.com source
     # is registered under `human_only_sources`, never under `sources`, so the
     # watcher never fetches it and no GitHub *Docs* page content reaches the
-    # adjudicator. Not "no GitHub content": four watched entries fetch Markdown
-    # from raw.githubusercontent.com, which is the MicrosoftDocs source for
-    # pages Learn renders. `check_human_only_containment` enforces this. See
+    # adjudicator. Not "no GitHub content": the watched `mitre-atlas-dataset`
+    # entry fetches MITRE's ATLAS data from raw.githubusercontent.com.
+    # `check_human_only_containment` enforces this. See
     # docs/agent-cadence.md.
     GITHUB_DOCS_HOST,
 ]
@@ -864,9 +864,9 @@ def check_human_only_containment(findings: Findings, registry: dict | None = Non
     may *fetch and adjudicate*.
 
     Scoped to GitHub Docs, not to "non-Learn content", because the watched array
-    is not Learn-only: four entries fetch from `raw.githubusercontent.com` (the
-    MicrosoftDocs repositories Learn renders), one from the OWASP GenAI site and
-    one from the public Microsoft 365 Roadmap. A promise that only holds while
+    is not Learn-only: one entry fetches MITRE's ATLAS data from
+    `raw.githubusercontent.com`, one the OWASP GenAI site and one the public
+    Microsoft 365 Roadmap. A promise that only holds while
     everyone remembers it is the class of control this repository does not
     accept anywhere else -- and so is one stated more broadly than it holds.
     """
