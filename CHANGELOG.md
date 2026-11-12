@@ -4,6 +4,23 @@ All notable changes to this repository are recorded here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows a **monthly refresh cadence**: every row in the capability-status matrix is re-verified each month and every verification pass is recorded below (date, rows touched, status changes). What "re-verified" means differs by row, and the difference is stated rather than smoothed over: most rows are re-fetched from their pinned Microsoft Learn source by the automated cadence, while the Microsoft 365 Message Center, the GitHub Docs pages behind matrix rows 12 and 13, and the NIST and CSA cross-walk rows can only be re-read by a human — so their dates move when a person moves them, and not otherwise. See [`docs/agent-cadence.md`](docs/agent-cadence.md).
 
+## [Unreleased] — 2026-11-12
+
+**No new matrix rows, no status changes, and no cross-walk cell moved.** This entry records one review: the OWASP GenAI Security Project's *Securing Agentic Applications V2: A Builder & Defender's Guide* (Version 2.0), read in full on 2026-11-12.
+
+### Added
+
+- **`crosswalk/framework-crosswalk.md` — a "Practitioner guidance for the agentic rows" section.** It pairs matrix rows 5, 11, 12 and 13 with the guide sections that sharpen how each should be read. Each pairing is pointer-level synthesis and moves no cell.
+  - The largest addition is for **row 13**. The guide separates catalog governance (§6.4.2, a vetted registry of approved MCP servers) from tool-definition integrity (§6.4.3, hash-pinning tool descriptions and schemas against a "rug-pull"). The enterprise allowlist matches servers on "name, URL, or `stdio` commands", so it is the first control and not the second.
+  - For **row 11**, the guide treats delegation (On-Behalf-Of exchange with narrowing scope) as a control separate from the agent's identity.
+  - For **row 12**, the guide names `.github/copilot-instructions.md` as untrusted repository-level configuration. Whether a row-12 policy governs such files was not checked, and the section says so.
+- **`SECURITY.md` — "Opening this repository in an AI coding agent".** It states what the tracked `.claude/` configuration does: two local-logging hooks, two subagent definitions with their tool grants, two rules files, and no MCP configuration. It also adds that configuration to the policy's in-scope list. The guide's §5.5.1 names this class of file as "an untrusted, execution-layer supply-chain vector".
+
+### Not done, and why
+
+- **The guide is not a fifth framework column.** It has no item IDs of its own. Its T-codes belong to the OWASP ASI *Threats & Mitigations* document, which has not been read here. Its own scope excludes "Detailed implementation guides for specific vendor platforms or frameworks", and it makes no availability claim about any Microsoft capability, so it is not a status source for any row.
+- **The new section is not tracked by the stale guard.** It sits outside the *Framework versions cited* table, so `stale_guard.py` will not flag it when a later version of the guide appears.
+
 ## [0.1.4] — 2026-11-05
 
 **No new matrix rows and no status changes.** This release folds two passes: the 2026-09-11 cadence-hardening pass (PRs #38, #39, #41, #42 and #44) and the November refresh with its follow-ups, 2026-11-04 to 2026-11-05 (PRs #48, #49, #52 and #53). Its subject is how the monthly cadence fails when nobody is watching, and the controls added because of that.

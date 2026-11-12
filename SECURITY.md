@@ -15,6 +15,8 @@ automation scripts. It ships no service, no runtime, and no product.
   excerpt, Message Center content, or NDA / private-preview material that has
   been committed. See `.claude/rules/security.md` and `disclaimer.md`.
 - A supply-chain concern about this repository's own dependencies or actions.
+- A concern about the AI-agent configuration this repository ships under
+  `.claude/` (see "Opening this repository in an AI coding agent" below).
 
 **Not in scope here — report these to Microsoft, not to this repository:**
 
@@ -71,3 +73,32 @@ Two mechanical notes for contributors:
   executable influence surfaces — and never reads commit messages, so the
   confidentiality rules apply to commit messages by review, not by automation. Write every commit message to the same public-safe bar as
   the content.
+
+## Opening this repository in an AI coding agent
+
+This repository ships Claude Code project configuration, and a clone carries
+it with it. The OWASP GenAI Security Project's *Securing Agentic Applications
+V2* (§5.5.1) advises treating exactly this kind of file as "an untrusted,
+execution-layer supply-chain vector", so here is what it does. Read the files
+yourself before you trust this folder in an agent; this list describes them, it
+does not vouch for them.
+
+- **`.claude/settings.json`** registers two hooks. Each runs `pwsh` on a tracked
+  script under `.claude/hooks/`:
+  - `instructions-loaded-log.ps1` runs when instructions load. It appends a
+    timestamped line to `.claude/session-logs/instructions-load.log`.
+  - `postcompact-wrap-up.ps1` runs after context compaction. It appends a line
+    to `.claude/session-logs/compaction.log`, and returns a reminder to re-read
+    the matrix's last-verified dates.
+
+  Neither hook makes a network call. Neither reads anything but its own input
+  from the agent. `.claude/session-logs/` is gitignored.
+- **`.claude/agents/`** defines two subagents. `evidence-analyst` is read-only.
+  `status-adjudicator` can edit files and run shell commands, because it edits
+  matrix rows and opens draft pull requests. Each file's `tools:` line is the
+  authoritative list.
+- **`.claude/rules/`** holds two instruction files the agent loads as context.
+- The repository ships **no** `.mcp.json` and no MCP server configuration.
+
+A change to any of these files changes what an agent does on a maintainer's
+machine. Review it with the same care as a change to `.github/workflows/`.
