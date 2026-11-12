@@ -78,8 +78,9 @@ Two mechanical notes for contributors:
 
 This repository ships Claude Code project configuration, and a clone carries
 it with it. The OWASP GenAI Security Project's *Securing Agentic Applications
-V2* (§5.5.1) advises treating exactly this kind of file as "an untrusted,
-execution-layer supply-chain vector", so here is what it does. Read the files
+V2* (§5.5.1; CC BY-SA 4.0, see `LICENSE-CONTENT`) advises treating exactly
+this kind of file as "an untrusted, execution-layer supply-chain vector", so
+here is what it does. Read the files
 yourself before you trust this folder in an agent; this list describes them, it
 does not vouch for them.
 
@@ -88,15 +89,22 @@ does not vouch for them.
   - `instructions-loaded-log.ps1` runs when instructions load. It appends a
     timestamped line to `.claude/session-logs/instructions-load.log`.
   - `postcompact-wrap-up.ps1` runs after context compaction. It appends a line
-    to `.claude/session-logs/compaction.log`, and returns a reminder to re-read
-    the matrix's last-verified dates.
+    to `.claude/session-logs/compaction.log`. It then returns a reminder the agent
+    receives as context, which reads in part: "Re-read the matrix's last-verified dates
+    and CHANGELOG state before continuing status-verification work, and
+    consider /wrap-up or /obsidian-save to persist tiered memory." Those two
+    commands are the maintainer's own and are not shipped in this repository.
 
-  Neither hook makes a network call. Neither reads anything but its own input
-  from the agent. `.claude/session-logs/` is gitignored.
+  Neither hook makes a network call. Neither reads any file; each reads only
+  the JSON the agent passes it on standard input. `.claude/session-logs/` is
+  gitignored.
 - **`.claude/agents/`** defines two subagents. `evidence-analyst` is read-only.
   `status-adjudicator` can edit files and run shell commands, because it edits
   matrix rows and opens draft pull requests. Each file's `tools:` line is the
-  authoritative list.
+  authoritative list. `status-adjudicator`'s definition says it has "no network
+  access". That is an instruction to the model, not an enforced restriction:
+  it holds `Bash`, and `.claude/settings.json` sets no `permissions` that
+  would stop a shell command from reaching the network.
 - **`.claude/rules/`** holds two instruction files the agent loads as context.
 - The repository ships **no** `.mcp.json` and no MCP server configuration.
 

@@ -11,15 +11,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **`crosswalk/framework-crosswalk.md` — a "Practitioner guidance for the agentic rows" section.** It pairs matrix rows 5, 11, 12 and 13 with the guide sections that sharpen how each should be read. Each pairing is pointer-level synthesis and moves no cell.
-  - The largest addition is for **row 13**. The guide separates catalog governance (§6.4.2, a vetted registry of approved MCP servers) from tool-definition integrity (§6.4.3, hash-pinning tool descriptions and schemas against a "rug-pull"). The enterprise allowlist matches servers on "name, URL, or `stdio` commands", so it is the first control and not the second.
-  - For **row 11**, the guide treats delegation (On-Behalf-Of exchange with narrowing scope) as a control separate from the agent's identity.
+  - The largest addition is for **row 13**. The guide separates catalog governance (§6.4.2, a vetted registry of approved MCP servers) from tool-definition integrity (§6.4.3, hash-pinning tool descriptions and schemas against a "rug-pull"). The enterprise allowlist matches servers on "name, URL, or `stdio` commands". It is therefore a catalog-governance control, and only part of one: §6.4.2 also asks for code scanning, an SBOM and a signed catalog manifest. It is not a definition-integrity control.
+  - For **row 11**, the guide states attenuated delegation (On-Behalf-Of exchange with narrowing scope) as a requirement distinct from the agent's identity. Its own example credential, Azure Managed Identities (§4.1.1), is one that row 11 quotes Learn as saying "aren't covered by policy".
   - For **row 12**, the guide names `.github/copilot-instructions.md` as untrusted repository-level configuration. Whether a row-12 policy governs such files was not checked, and the section says so.
-- **`SECURITY.md` — "Opening this repository in an AI coding agent".** It states what the tracked `.claude/` configuration does: two local-logging hooks, two subagent definitions with their tool grants, two rules files, and no MCP configuration. It also adds that configuration to the policy's in-scope list. The guide's §5.5.1 names this class of file as "an untrusted, execution-layer supply-chain vector".
+- **`SECURITY.md` — "Opening this repository in an AI coding agent".** It states what the tracked `.claude/` configuration does: two local-logging hooks, two subagent definitions with their tool grants, two rules files, and no MCP configuration. It also discloses that `status-adjudicator`'s "no network access" is an instruction, not an enforced permission. It adds that configuration to the policy's in-scope list.
+- **`LICENSE-CONTENT` — the guide's excerpts are carved out of the CC BY 4.0 grant.** They stay under the guide's own CC BY-SA 4.0 licence, which the cross-walk now links. The guide's §5.5.1 names this class of file as "an untrusted, execution-layer supply-chain vector".
 
 ### Not done, and why
 
 - **The guide is not a fifth framework column.** It has no item IDs of its own. Its T-codes belong to the OWASP ASI *Threats & Mitigations* document, which has not been read here. Its own scope excludes "Detailed implementation guides for specific vendor platforms or frameworks", and it makes no availability claim about any Microsoft capability, so it is not a status source for any row.
-- **The new section is not tracked by the stale guard.** It sits outside the *Framework versions cited* table, so `stale_guard.py` will not flag it when a later version of the guide appears.
+- **The new section is not tracked by the stale guard.** It sits outside the *Framework versions cited* table, so `stale_guard.py` does not age its 2026-11-12 read date. A later version of the guide needs a human to notice it.
 
 ## [0.1.4] — 2026-11-05
 

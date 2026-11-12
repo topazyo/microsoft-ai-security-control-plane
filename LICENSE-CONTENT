@@ -50,6 +50,13 @@ owners and is used for identification and commentary:
     the Microsoft 365 Roadmap. Quoted Microsoft Learn text belongs to Microsoft.
   * OWASP Top 10 for LLM Applications item numbers and titles (OWASP GenAI
     Security Project).
+  * Short quoted excerpts and section titles from OWASP GenAI Security
+    Project, "Securing Agentic Applications V2: A Builder & Defender's Guide"
+    (Version 2.0), in crosswalk/framework-crosswalk.md, SECURITY.md and
+    CHANGELOG.md. They
+    remain under that guide's own licence, CC BY-SA 4.0
+    (https://creativecommons.org/licenses/by-sa/4.0/), not under the
+    CC BY 4.0 grant above.
   * MITRE ATLAS technique identifiers and names (The MITRE Corporation).
   * NIST AI 600-1 subcategory identifiers and text (a U.S. Government
     publication).
