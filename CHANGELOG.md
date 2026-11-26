@@ -4,6 +4,25 @@ All notable changes to this repository are recorded here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows a **monthly refresh cadence**: every row in the capability-status matrix is re-verified each month and every verification pass is recorded below (date, rows touched, status changes). What "re-verified" means differs by row, and the difference is stated rather than smoothed over: most rows are re-fetched from their pinned Microsoft Learn source by the automated cadence, while the Microsoft 365 Message Center, the GitHub Docs pages behind matrix rows 12 and 13, and the NIST and CSA cross-walk rows can only be re-read by a human — so their dates move when a person moves them, and not otherwise. See [`docs/agent-cadence.md`](docs/agent-cadence.md).
 
+## [Unreleased] — 2026-11-26 refresh
+
+**No status changes and no cross-walk cell moved.** This pass re-verifies the five items the stale guard has reported since v0.1.4 (issue #46). These are matrix rows 12 and 13 and the OWASP, NIST AI 600-1 and CSA AICM cross-walk rows. All five are human-only, so no automated run can advance them. They were re-read in a local session the maintainer directed, and an agent did the fetching and matching. Every last-verified date moves to **2026-11-26**, the UTC date of the fetches.
+
+### Changed
+
+- `matrix/capability-status-matrix.md` — **rows 12 and 13 re-read against all eight registered `docs.github.com` pages, and three quotes corrected because the pages changed.** Every GitHub Docs quote in both rows was checked against every page, not only its attributed one. Three negative controls, including the "Blocked by default" misquote corrected on 2026-09-10, matched nothing.
+  - **Row 12, the public-code default is now unverified.** The sentence "Suggestions matching public code is set to Allowed by default for Copilot Business users" no longer appears on any cited page. The row keeps the 2026-09-10 quote as history and tells the reader to check the default in their own enterprise.
+  - **Row 12, a rename.** The example "you can block Copilot cloud agent" now reads "Copilot in the cloud".
+  - **Row 13, a wider scope.** The allowlist definition now covers "Copilot clients and cloud sandboxes".
+  - **Row 13, a new scope limit.** The same page now says the lists "don't apply to MCP servers defined in repository custom agent profiles", with a firewall-based workaround. This is added to the row's scope-boundary list.
+  - **No label moves.** All four grounds for row 12's *Requires further validation* survive, and row 13's GA and Public Preview halves rest on unchanged sentences. Row 13's client-coverage gap stays open, because the enumerating page was not read.
+  - **Redirects.** Five of the eight registered URLs now redirect to new paths. They still resolve, so `sources.json` is unchanged.
+- `crosswalk/framework-crosswalk.md` — **OWASP, NIST AI 600-1 and CSA AICM re-verified by the methods each row publishes, with nothing changed.**
+  - **OWASP.** The 2026 resource page still presents the v1.0 edition dated August 3, 2026. The artifact's SHA-256 recomputes to `ef87993a…6108e`. The landing page still serves the 2025 IDs.
+  - **NIST.** A fresh download is byte-identical to the copy read on 2026-09-11, and both quotes are present. NIST's publication page shows no supersession, and SP 2400-102e2026 (initial public draft) cites AI 600-1 rather than replacing it.
+  - **CSA.** The held v1.1.1 workbook still resolves all 14 cited IDs with their recorded titles, and the counts are 247 controls across 18 domains. CSA's AICM v1.1 page reads "247 control objectives" and announces nothing later. A patch release posted only inside the gated download would not be visible to this check, and the row says so.
+- **`scripts/stale_guard.py` now reports 0 items, down from 5.** Issue #46 closes on the guard's next run after this merges. The guard closes it itself, by design. Matrix rows 1–3 and 5–11 and the MITRE row were last verified 2026-11-04 and go stale after 2026-12-04. That is the December refresh's window, not this pass's.
+
 ## [Unreleased] — 2026-11-12
 
 **No new matrix rows, no status changes, and no cross-walk cell moved.** This entry records one review: the OWASP GenAI Security Project's *Securing Agentic Applications V2: A Builder & Defender's Guide* (Version 2.0), read in full on 2026-11-12.
