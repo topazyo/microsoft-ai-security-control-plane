@@ -153,11 +153,38 @@ jobs:
       # precedent: it fired, it was green, and nobody heard it. The first
       # notification this repository produced was the stale guard's issue, which
       # by construction arrives only once the window has already been missed.
-      - name: Tell a human the monthly consolidation is waiting for them
+      # The deferral used to be gated on the missing key alone, so a run that
+      # fired after the month's refresh had already merged still asked a human
+      # for it (issue #55, 2026-11-06). This reads what a consolidation leaves
+      # behind -- every watched-source matrix row stamped in the current UTC
+      # month -- and resolves every doubt towards "not recorded". A crash here
+      # turns the run red and skips the issue step (implicit success()), which
+      # is the loud failure, not a silent one.
+      - name: Check whether this month's consolidation is already recorded
+        id: month
         if: steps.creds.outputs.present != 'true'
+        run: python3 scripts/stale_guard.py --consolidation-check
+
+      # `== 'true'` here and `!= 'true'` on the next step, so an absent output
+      # files the issue rather than recording a skip. tests/test_stale_guard.py
+      # pins both directions.
+      - name: Record that this month's consolidation is already done
+        if: steps.creds.outputs.present != 'true' && steps.month.outputs.consolidated == 'true'
+        env:
+          REPORT: ${{ steps.month.outputs.report }}
+        run: |
+          echo "::notice::No consolidation issue filed - this month's refresh is already recorded in the matrix stamps."
+          {
+            printf '## Monthly consolidation already recorded — %s\n\n' "$(date -u +'%Y-%m')"
+            printf '%s\n' "${REPORT}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Tell a human the monthly consolidation is waiting for them
+        if: steps.creds.outputs.present != 'true' && steps.month.outputs.consolidated != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FAILED_SOURCES: ${{ steps.watch.outputs.failed_sources }}
+          LAGGING: ${{ steps.month.outputs.report }}
           TITLE: 'Monthly consolidation is waiting on a human'
         run: |
           echo "::warning::Monthly consolidation did NOT run - no ANTHROPIC_API_KEY is configured. Run tier D3 locally; see docs/agent-cadence.md."
@@ -172,6 +199,9 @@ jobs:
           exists only on this runner and is discarded with it, so `fingerprints.json` is
           unchanged and the next run re-detects the same state.
           BODY
+            if [ -n "${LAGGING}" ]; then
+              printf '\n**Why this month is not recorded yet:**\n\n%s\n' "${LAGGING}"
+            fi
             if [ -n "${FAILED_SOURCES}" ]; then
               printf '\n**Unreachable this run:** %s - do not advance those rows dates.\n' "${FAILED_SOURCES}"
             fi

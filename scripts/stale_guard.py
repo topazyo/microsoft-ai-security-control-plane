@@ -23,7 +23,7 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -97,6 +97,72 @@ def parse_footer_date(text: str, pattern: str) -> list[tuple[str, str]]:
     return [("footer", match.group(1))] if match else []
 
 
+def watched_matrix_rows(registry: dict) -> set[int]:
+    """Matrix rows claimed by at least one entry a workflow may fetch.
+
+    The same derivation as `claimed_rows(registry["sources"])` in
+    scripts/validate_bot_pr.py, which tests/test_stale_guard.py pins. Human-only
+    rows are excluded on purpose: a human re-read of row 12 or 13 says nothing
+    about whether the month's consolidation ran.
+    """
+    return {
+        row
+        for entry in registry.get("sources", [])
+        for row in entry.get("matrix_rows", [])
+        if isinstance(row, int)
+    }
+
+
+def consolidation_status(matrix_text: str, registry: dict, today: date) -> tuple[bool, list[str]]:
+    """Has this calendar month's consolidation (tier D3) already been recorded?
+
+    Yes only when every matrix row backed by a watched source carries a
+    last-verified date in `today`'s calendar month. That is what a consolidation
+    leaves behind: it re-stamps every row whose sources it fetched. The monthly
+    run used to ask a human for the consolidation even when that month's refresh
+    had already merged (issue #55), because its only gate was a missing API key.
+
+    Every doubt resolves to "not consolidated", because the cost of a wrong
+    "not consolidated" is one issue a human closes, and the cost of a wrong
+    "consolidated" is a month's obligation silently skipped:
+
+      - no watched rows at all (a registry that claims nothing would otherwise
+        pass vacuously);
+      - an unreadable matrix table;
+      - a row identifier that is not an integer;
+      - a watched row missing from the matrix;
+      - any watched row dated in another month, including a row whose source
+        could not be fetched and so legitimately kept its old date.
+
+    Returns (consolidated, reasons). `reasons` names every row that blocks the
+    answer, and is empty only when the answer is yes.
+    """
+    month = today.strftime("%Y-%m")
+    watched = watched_matrix_rows(registry)
+    if not watched:
+        return False, ["the registry claims no matrix row through a watched source"]
+
+    entries = parse_table_dates(matrix_text, "Last verified")
+    if not entries:
+        return False, ["no last-verified date could be read from the matrix table"]
+
+    dated: dict[int, str] = {}
+    reasons: list[str] = []
+    for identifier, iso in entries:
+        if not identifier.isdigit():
+            reasons.append(f"matrix row identifier {identifier!r} is not an integer")
+            continue
+        dated[int(identifier)] = iso
+
+    for row in sorted(watched):
+        iso = dated.get(row)
+        if iso is None:
+            reasons.append(f"matrix row {row}: claimed by a watched source but has no readable date")
+        elif not iso.startswith(month):
+            reasons.append(f"matrix row {row}: last verified {iso}, not in {month}")
+    return not reasons, reasons
+
+
 def emit_github_output(**values) -> None:
     output_path = os.environ.get("GITHUB_OUTPUT")
     if not output_path:
@@ -124,13 +190,63 @@ def use_utf8_streams() -> None:
             reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
+def run_consolidation_check(today_arg: str | None) -> int:
+    """`--consolidation-check`: emit `consolidated=true|false` and a report.
+
+    Today is the UTC date, matching the `date -u` month the monthly workflow
+    writes into its issue title. An unreadable registry or matrix exits 1 and
+    so turns the run red. Neither input can legitimately be unreadable, and a
+    red run is the loud signal that makes someone look. The `consolidated`
+    output is still written as `false` first, so a caller that does read it
+    leans towards filing the issue.
+    """
+    today = (
+        datetime.strptime(today_arg, "%Y-%m-%d").date()
+        if today_arg
+        else datetime.now(timezone.utc).date()
+    )
+    month = today.strftime("%Y-%m")
+    matrix_path = REPO_ROOT / "matrix" / "capability-status-matrix.md"
+    try:
+        registry = json.loads(SOURCES_FILE.read_text(encoding="utf-8"))
+        matrix_text = matrix_path.read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        report = f"Cannot decide whether the {month} consolidation is recorded: {exc}"
+        print(report)
+        emit_github_output(consolidated="false", report=report)
+        return 1
+
+    consolidated, reasons = consolidation_status(matrix_text, registry, today)
+    watched = sorted(watched_matrix_rows(registry))
+    if consolidated:
+        report = (
+            f"The {month} consolidation is recorded: all {len(watched)} matrix row(s) backed by a "
+            f"watched source carry a last-verified date in {month} (rows {', '.join(map(str, watched))})."
+        )
+    else:
+        lines = [f"The {month} consolidation is NOT recorded yet:", ""]
+        lines.extend(f"- {reason}" for reason in reasons)
+        report = "\n".join(lines)
+    print(report)
+    emit_github_output(consolidated=str(consolidated).lower(), report=report)
+    return 0
+
+
 def main() -> int:
     use_utf8_streams()
     parser = argparse.ArgumentParser(description="Staleness guard (tier D4).")
     parser.add_argument("--today", default=None, help="Override today's date (YYYY-MM-DD), for testing.")
     parser.add_argument("--window-days", type=int, default=None, help="Override the staleness window.")
     parser.add_argument("--fail-on-stale", action="store_true", help="Exit non-zero when anything is stale.")
+    parser.add_argument(
+        "--consolidation-check",
+        action="store_true",
+        help="Report whether this calendar month's consolidation is already recorded, instead of staleness.",
+    )
     args = parser.parse_args()
+
+    if args.consolidation_check:
+        return run_consolidation_check(args.today)
 
     window = args.window_days
     if window is None:

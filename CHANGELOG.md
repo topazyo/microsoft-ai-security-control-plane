@@ -25,6 +25,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Three GitHub Docs MCP pages were retitled.** The allowlist-enforcement reference is now "MCP private registry enforcement", the concepts page is "MCP server usage in your company", and the server-access page is "Restrict MCP server access to a custom registry". Row 13 records this. The link texts are left as they are.
 - **`scripts/stale_guard.py` now reports 0 items, down from 5.** Issue #46 closes on the guard's next run after this merges. The guard closes it itself, by design. Matrix rows 1–3 and 5–11 and the MITRE row were last verified 2026-11-04 and go stale after 2026-12-04. That is the December refresh's window, not this pass's.
 
+### Fixed
+
+- `.github/workflows/monthly-refresh.yml` and `scripts/stale_guard.py` — **the monthly run no longer asks a human for a consolidation that has already landed** (issue #55, a known gap recorded at v0.1.4).
+  - **The cause.** The deferral step was gated only on the missing API key. On 2026-11-06 it therefore filed *Monthly consolidation is waiting on a human* two days after November's refresh had merged.
+  - **The fix.** A new `--consolidation-check` mode reads the evidence a consolidation leaves behind: every matrix row backed by a watched source stamped in the current UTC month. The issue is skipped only when all of them are. The check reads the matrix stamps and not the CHANGELOG, because a released heading has no `refresh` token and the November refresh was folded into v0.1.4.
+  - **Fail-safe.** Every doubt files the issue: a row whose source was unreachable, a watched row missing from the matrix, an empty row set, an unparseable table or a non-integer row id. An unreadable registry or matrix turns the run red. A skip leaves a notice and a step-summary line, and a filed issue now names the rows not yet stamped this month.
+  - **Replayed against history** before merging. It files for the September and October crons, files for the PR #48 tree alone (row 4 still lagged), skips at the real 2026-11-06 cron (`22d3cfd`), and files for current `main` at 2026-12-06.
+  - **Tests.** 23 new tests:
+    - every fail-closed branch;
+    - the row set pinned to `validate_bot_pr.claimed_rows`;
+    - the default mode's outputs unchanged;
+    - both workflow gates pinned to literals the script emits, in opposite directions, so an absent output files the issue and does not record a skip.
+
+    The suite is **382** tests.
+
 ## [Unreleased] — 2026-11-12
 
 **No new matrix rows, no status changes, and no cross-walk cell moved.** This entry records one review: the OWASP GenAI Security Project's *Securing Agentic Applications V2: A Builder & Defender's Guide* (Version 2.0), read in full on 2026-11-12.
