@@ -14,7 +14,7 @@ Two facts about this repository shape everything below.
 
 **Retrieval is cheap; judgement is expensive and risky.** The complete watch
 surface is **22 watched sources** (`.github/watch-state/sources.json`), plus
-**11 human-only sources** that no workflow may fetch, against **13 matrix rows**.
+**13 human-only sources** that no workflow may fetch, against **13 matrix rows**.
 Those numbers are re-derived from the registry and the matrix by
 `check_doc_counts` in `scripts/validate_bot_pr.py`, and CI fails when this
 sentence drifts from them. It previously carried a written instruction to

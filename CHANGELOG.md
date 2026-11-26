@@ -24,6 +24,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Who did the read, stated consistently.** Rows 12 and 13's sourcing notes, the checklist's Group 7 bullet, the `github-copilot-policies` and `csa-aicm` registry reasons, and `docs/agent-cadence.md` said these sources are "re-verified by a human" and that no GitHub Docs content "reaches the model tier". That was true of every automated run but false of this pass. They now say what the gate enforces: no *automated* run fetches or adjudicates these pages. They also say that a re-read the maintainer directs may use an agent, and that each row's re-read record states who did the read. The gate itself, `check_human_only_containment`, is unchanged.
 - **Three GitHub Docs MCP pages were retitled.** The allowlist-enforcement reference is now "MCP private registry enforcement", the concepts page is "MCP server usage in your company", and the server-access page is "Restrict MCP server access to a custom registry". Row 13 records this. The link texts are left as they are.
 - **`scripts/stale_guard.py` now reports 0 items, down from 5.** Issue #46 closes on the guard's next run after this merges. The guard closes it itself, by design. Matrix rows 1–3 and 5–11 and the MITRE row were last verified 2026-11-04 and go stale after 2026-12-04. That is the December refresh's window, not this pass's.
+- `matrix/capability-status-matrix.md` — **row 13's client coverage is enumerated, closing a gap open since 2026-08-10.** Two GitHub Docs pages were read and registered as human-only sources: *Getting started with enterprise-managed settings* and the *Enterprise managed settings* reference. The registry goes from 11 to 13 human-only sources. The reference's per-key table marks `allowedMcpServers` and `deniedMcpServers` as "Supported" for:
+  - Copilot CLI;
+  - VS Code;
+  - the GitHub Copilot app;
+  - Copilot in the cloud (sandbox);
+  - JetBrains IDEs.
+
+  They are marked **"Not supported" for Copilot in the cloud (GitHub Actions)**. Assigning an issue to Copilot currently runs there, so an issue-assigned session is outside the `managed-settings.json` allowlist. **Visual Studio is not in GitHub's supported-client list for `managed-settings.json`.** Row 13 lists Visual Studio for its editor-scoped control. The row now states that Visual Studio's own allow-list statement is no evidence that the enterprise allowlist reaches it. **No status label moves:** GA describes the managed-settings method's release state, and its reach was the residual gap, which is now stated instead of unverified. The checklist's Group 7 bullet carries the same list.
 
 ## [Unreleased] — 2026-11-12
 
