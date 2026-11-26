@@ -484,9 +484,11 @@ credential.
 They are not the only entries in that array, and the others sit there for the
 opposite kind of reason. The `docs.github.com` Copilot-policy and MCP pages are
 perfectly fetchable; they are kept out of `sources` *precisely* so that no
-**GitHub Docs** page content reaches the model tier. `check_human_only_containment`
-in `scripts/validate_bot_pr.py` enforces that, so it is a gate rather than a
-convention.
+**GitHub Docs** page content reaches the automated model tiers (D2 and D3).
+`check_human_only_containment` in `scripts/validate_bot_pr.py` enforces that, so
+it is a gate rather than a convention. The gate covers automated runs only. A
+re-read the maintainer directs in a local session may use an agent, and when it
+does, the row's re-read record says so.
 
 Stated at that width deliberately, because the wider claim would be false: the
 watched array is not Learn-only. One entry fetches MITRE's ATLAS data from
