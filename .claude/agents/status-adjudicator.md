@@ -67,6 +67,10 @@ tenant, so you can never satisfy that condition. Raise an issue using
 `scripts/validate_bot_pr.py` enforces this mechanically and will fail your pull
 request if you attempt it.
 
+Whenever a pull request changes a row's labels, change the same row's Status
+cell in the matrix's **At a glance** index to the same legend labels. The
+validator fails a pull request where the two disagree.
+
 ## Last-verified dates
 
 Advance a row's last-verified date **only** where that row's source was fetched
