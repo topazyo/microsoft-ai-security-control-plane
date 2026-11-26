@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Copilot in the cloud (sandbox);
   - JetBrains IDEs.
 
-  They are marked **"Not supported" for Copilot in the cloud (GitHub Actions)**. That is where assigning an issue to Copilot runs, so an issue-assigned session is outside the allowlist. **Visual Studio is not a `managed-settings.json` client.** Row 13 lists Visual Studio for its editor-scoped control. The row now states that Visual Studio's own allow-list statement is no evidence that the enterprise allowlist reaches it. **No status label moves:** GA describes the managed-settings method's release state, and its reach was the residual gap, which is now stated instead of unverified. The checklist's Group 7 bullet carries the same list.
+  They are marked **"Not supported" for Copilot in the cloud (GitHub Actions)**. Assigning an issue to Copilot currently runs there, so an issue-assigned session is outside the `managed-settings.json` allowlist. **Visual Studio is not in GitHub's supported-client list for `managed-settings.json`.** Row 13 lists Visual Studio for its editor-scoped control. The row now states that Visual Studio's own allow-list statement is no evidence that the enterprise allowlist reaches it. **No status label moves:** GA describes the managed-settings method's release state, and its reach was the residual gap, which is now stated instead of unverified. The checklist's Group 7 bullet carries the same list.
 
 ## [Unreleased] — 2026-11-12
 

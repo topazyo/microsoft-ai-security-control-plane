@@ -303,7 +303,7 @@
       "title": "Enterprise managed settings (GitHub Copilot reference)",
       "matrix_rows": [13],
       "cite_url": "https://docs.github.com/en/copilot/reference/enterprise-administrators/enterprise-managed-settings",
-      "reason": "Human-only, as above. Carries the per-key 'Client support by key' table, which is the only place that says which clients honour allowedMcpServers and deniedMcpServers. On 2026-11-26 it marked both keys 'Not supported' for Copilot in the cloud running on GitHub Actions. A change in that table is what would move row 13's coverage boundary, so a human re-read should check it at each refresh. Its support marks are icons with aria-labels, so a text-only conversion of the page shows nothing in the support columns.",
+      "reason": "Human-only, as above. Carries the per-key 'Client support by key' table, which says which clients honour allowedMcpServers and deniedMcpServers. On 2026-11-26 it marked both keys 'Not supported' for Copilot in the cloud running on GitHub Actions. A change in that table is what would move row 13's coverage boundary, so a human re-read should check it at each refresh. Its support marks are icons with aria-labels, so a text-only conversion of the page shows nothing in the support columns.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
     },
     {
