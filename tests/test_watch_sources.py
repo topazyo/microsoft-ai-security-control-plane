@@ -1368,8 +1368,22 @@ class DeferralNotifiesTests(unittest.TestCase):
         An issue saying "waiting on a human" filed on a run that just opened a
         refresh pull request would be false on arrival, and false reminders are
         how a person learns to ignore true ones.
+
+        The condition gained conjuncts in #59 (the consolidation check, and a
+        status group so a crashed check still files), so this asserts the
+        property rather than the line's prefix. The credential clause must be a
+        top-level conjunct: once the one sanctioned status group is removed, no
+        `||` may remain that could bypass it.
         """
-        self.assertIn("if: steps.creds.outputs.present != 'true'", self.deferral_step())
+        condition_lines = [
+            line.strip()[len("if:"):].strip()
+            for line in self.deferral_step().splitlines()
+            if line.strip().startswith("if:")
+        ]
+        self.assertEqual(len(condition_lines), 1, "expected exactly one `if:` on the deferral step")
+        remainder = condition_lines[0].replace("(success() || steps.month.outcome == 'failure')", "")
+        self.assertIn("steps.creds.outputs.present != 'true'", remainder)
+        self.assertNotIn("||", remainder)
 
 
 class CommittedBaselineInvariantTests(unittest.TestCase):

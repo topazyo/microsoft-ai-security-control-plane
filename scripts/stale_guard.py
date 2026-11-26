@@ -129,7 +129,9 @@ def consolidation_status(matrix_text: str, registry: dict, today: date) -> tuple
       - no watched rows at all (a registry that claims nothing would otherwise
         pass vacuously);
       - an unreadable matrix table;
-      - a row identifier that is not an integer;
+      - a row identifier that is not an ASCII integer;
+      - a row that appears more than once, because keeping either of its dates
+        could let a fresh duplicate hide a stale row;
       - a watched row missing from the matrix;
       - any watched row dated in another month, including a row whose source
         could not be fetched and so legitimately kept its old date.
@@ -149,10 +151,17 @@ def consolidation_status(matrix_text: str, registry: dict, today: date) -> tuple
     dated: dict[int, str] = {}
     reasons: list[str] = []
     for identifier, iso in entries:
-        if not identifier.isdigit():
+        # ASCII digits only: str.isdigit() also accepts superscripts and other
+        # scripts' digits, some of which int() then rejects with a traceback.
+        if not re.fullmatch(r"[0-9]+", identifier):
             reasons.append(f"matrix row identifier {identifier!r} is not an integer")
             continue
-        dated[int(identifier)] = iso
+        row = int(identifier)
+        if row in dated:
+            # Keeping either date would let a fresh duplicate hide a stale row.
+            reasons.append(f"matrix row {row} appears more than once")
+            continue
+        dated[row] = iso
 
     for row in sorted(watched):
         iso = dated.get(row)

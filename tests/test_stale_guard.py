@@ -980,6 +980,24 @@ class ConsolidationStatusTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("'2a'" in reason for reason in reasons), reasons)
 
+    def test_a_duplicated_row_cannot_hide_a_stale_stamp(self):
+        """A bad merge that leaves row 2 twice, old stamp first, fresh one second."""
+        text = synthetic_matrix(("2026-11-04", "2026-09-09")).replace(
+            "\n\nProse after the table.",
+            "\n| 2 | Synthetic capability 2 | **GA** | 2026-11-04 | duplicate |\n\nProse after the table.",
+        )
+        ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+        self.assertFalse(ok)
+        self.assertTrue(any("appears more than once" in reason for reason in reasons), reasons)
+
+    def test_a_non_ascii_digit_identifier_is_rejected_without_a_traceback(self):
+        for odd in ("²", "١"):  # superscript two, Arabic-Indic one
+            with self.subTest(identifier=odd):
+                text = synthetic_matrix(("2026-11-04", "2026-11-04")).replace("| 1 |", f"| {odd} |")
+                ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+                self.assertFalse(ok)
+                self.assertTrue(any("is not an integer" in reason for reason in reasons), reasons)
+
     def test_non_integer_registry_rows_are_ignored_like_the_validator_ignores_them(self):
         registry = {"sources": [{"id": "x", "matrix_rows": [1, "2"]}]}
         self.assertEqual(guard.watched_matrix_rows(registry), {1})
@@ -995,18 +1013,31 @@ class ConsolidationRowSetTests(unittest.TestCase):
         registry = self.live_registry()
         self.assertEqual(guard.watched_matrix_rows(registry), validate.claimed_rows(registry["sources"]))
 
-    def test_the_live_row_set_is_not_empty_and_excludes_human_only_rows(self):
+    def test_a_stale_human_only_row_does_not_block_the_live_registry(self):
+        """On the real registry: watched rows fresh, human-only rows years old."""
         registry = self.live_registry()
         watched = guard.watched_matrix_rows(registry)
         self.assertTrue(watched)
         human_only_exclusive = validate.claimed_rows(registry["human_only_sources"]) - watched
         self.assertTrue(human_only_exclusive, "expected at least one human-only-backed row to exclude")
-        self.assertFalse(watched & human_only_exclusive)
+        rows = range(1, max(watched | human_only_exclusive) + 1)
+        dates = ["2026-11-04" if row in watched else "2020-01-01" for row in rows]
+        ok, reasons = guard.consolidation_status(synthetic_matrix(dates), registry, datetime(2026, 11, 6).date())
+        self.assertTrue(ok, reasons)
 
-    def test_every_live_watched_row_exists_in_the_matrix(self):
-        """A watched row absent from the matrix would hold the deferral open forever."""
+    def test_every_live_watched_row_has_an_identifier_the_check_accepts(self):
+        """Read with the check's own parser and rule, not the validator's looser one.
+
+        A watched row whose cell the check rejects (bold, a suffix) would hold
+        the deferral open every month while a digit-stripping parser said fine.
+        """
         matrix = (REPO_ROOT / "matrix" / "capability-status-matrix.md").read_text(encoding="utf-8")
-        self.assertLessEqual(guard.watched_matrix_rows(self.live_registry()), set(validate.matrix_row_ids(matrix)))
+        accepted = {
+            int(identifier)
+            for identifier, _ in guard.parse_table_dates(matrix, "Last verified")
+            if re.fullmatch(r"[0-9]+", identifier)
+        }
+        self.assertLessEqual(guard.watched_matrix_rows(self.live_registry()), accepted)
 
 
 class ConsolidationCheckCliTests(GuardRunner):
@@ -1115,6 +1146,18 @@ class MonthlyRefreshDeferralGateTests(GuardRunner):
 
     def test_the_issue_step_still_requires_the_missing_key(self):
         self.assertIn("steps.creds.outputs.present != 'true'", self.step_ifs()[self.FILE_STEP])
+
+    def test_a_failed_check_still_files_the_issue_and_reports_staleness(self):
+        """Without this, a crashed check skips both by implicit success().
+
+        The run would be red but the obligation would reach a human only as a
+        failed-run email, and the staleness report would vanish with it.
+        """
+        ifs = self.step_ifs()
+        for step in (self.FILE_STEP, "Report residual staleness after the refresh",
+                     "Record residual staleness in the run summary"):
+            with self.subTest(step=step):
+                self.assertIn("steps.month.outcome == 'failure'", ifs.get(step, ""))
 
     def test_the_check_runs_before_both_steps_that_read_it(self):
         text = self.WORKFLOW.read_text(encoding="utf-8")

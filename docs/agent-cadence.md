@@ -618,14 +618,26 @@ the refresh merged on the 4th and was folded into v0.1.4 on the 5th.
 
 Every doubt resolves to filing the issue:
 
-- a row that kept an older date because its source was unreachable;
-- a watched row missing from the matrix;
+- a matrix row that kept an older date because its source was unreachable;
+- a watched row missing from the matrix, or appearing twice;
 - a registry that claims no row.
+
+A crashed check turns the run red, and it still files the issue and still
+reports residual staleness.
+
+The test reads **matrix rows only**. Cross-walk and checklist stamps are not part
+of it: the watched OWASP row is held back by judgement, so requiring it would file
+every month. The weekly stale guard still ages them.
 
 Rows backed only by human-only sources are excluded both ways, because a human
 re-read of row 12 says nothing about whether the month's consolidation ran. The
-issue body names the rows that are not yet stamped this month. A skipped run
-records a notice and a step-summary line instead, so the skip is visible.
+check only looks at stamp months, so a late refresh for the previous month that
+merges in the new month also counts as the new month's.
+
+The issue body names the rows that are not yet stamped this month. A skipped run
+records a notice and a step-summary line instead, so the skip is visible. It also
+names any consolidation issue still open from an earlier month, which it leaves
+for a human to close.
 
 **1. Produce the evidence bundle (this is tier D1, unchanged and deterministic):**
 

@@ -30,15 +30,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/monthly-refresh.yml` and `scripts/stale_guard.py` — **the monthly run no longer asks a human for a consolidation that has already landed** (issue #55, a known gap recorded at v0.1.4).
   - **The cause.** The deferral step was gated only on the missing API key. On 2026-11-06 it therefore filed *Monthly consolidation is waiting on a human* two days after November's refresh had merged.
   - **The fix.** A new `--consolidation-check` mode reads the evidence a consolidation leaves behind: every matrix row backed by a watched source stamped in the current UTC month. The issue is skipped only when all of them are. The check reads the matrix stamps and not the CHANGELOG, because a released heading has no `refresh` token and the November refresh was folded into v0.1.4.
-  - **Fail-safe.** Every doubt files the issue: a row whose source was unreachable, a watched row missing from the matrix, an empty row set, an unparseable table or a non-integer row id. An unreadable registry or matrix turns the run red. A skip leaves a notice and a step-summary line, and a filed issue now names the rows not yet stamped this month.
-  - **Replayed against history** before merging. It files for the September and October crons, files for the PR #48 tree alone (row 4 still lagged), skips at the real 2026-11-06 cron (`22d3cfd`), and files for current `main` at 2026-12-06.
-  - **Tests.** 23 new tests:
-    - every fail-closed branch;
+  - **Scope.** The test reads **matrix rows only**. Cross-walk and checklist stamps are not part of it. The MITRE and OWASP cross-walk rows are watched, but OWASP is deliberately held back by judgement, so requiring it would file every month. The weekly stale guard still ages both.
+  - **What counts as "recorded".** The check only looks at stamp months. So a previous month's refresh that merges in the new month also counts as the new month's.
+  - **Fail-safe.** Every doubt files the issue:
+    - a matrix row whose source was unreachable;
+    - a watched row missing from the matrix;
+    - a row that appears twice;
+    - an empty row set;
+    - an unparseable table;
+    - a row id that is not an ASCII integer.
+  - **A crash files the issue too.** An unreadable registry or matrix turns the run red. The issue step and the residual-staleness report still run after a failed check, so the obligation reaches an open issue and not only a failed-run email. The issue body says the run is red.
+  - **Visibility.** A skip leaves a notice and a step-summary line, and names any consolidation issue still open from an earlier month without changing it. A filed issue now names the rows not yet stamped this month.
+  - **Replayed against history** before merging. It files for the September and October crons, files for the PR #48 tree alone (row 4 still lagged), skips at the real 2026-11-06 cron (`22d3cfd`), and files for current `main` at 2026-12-06. A live dispatch on the branch took the skip path and opened no issue.
+  - **Tests.** 26 new tests:
+    - every fail-closed branch, including duplicate and non-ASCII row ids;
     - the row set pinned to `validate_bot_pr.claimed_rows`;
     - the default mode's outputs unchanged;
-    - both workflow gates pinned to literals the script emits, in opposite directions, so an absent output files the issue and does not record a skip.
+    - both workflow gates pinned to literals the script emits, in opposite directions;
+    - the failure path pinned on all three steps that must survive a crashed check.
 
-    The suite is **382** tests.
+    `test_watch_sources`'s credential-gate test now asserts that the credential clause is a top-level conjunct, rather than matching the line's old prefix. The suite is **385** tests.
 
 ## [Unreleased] — 2026-11-12
 
