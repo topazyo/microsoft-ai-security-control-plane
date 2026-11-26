@@ -190,7 +190,7 @@ microsoft-ai-security-control-plane/
 └── .github/
     ├── workflows/                         # daily source watch, monthly refresh, weekly stale guard, validate gate
     ├── watch-state/                       # sources.json (pinned source registry) + fingerprints.json (baseline)
-    ├── ISSUE_TEMPLATE/                    # new row proposal, status correction, tenant verification
+    ├── ISSUE_TEMPLATE/                    # new row proposal, status correction, tenant verification; config.yml routes security reports privately
     └── pull_request_template.md
 ```
 

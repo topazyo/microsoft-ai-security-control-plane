@@ -1,0 +1,14 @@
+# Issue chooser configuration. Security and confidentiality reports must not
+# arrive as public issues: a public report of committed tenant data amplifies
+# the exposure it describes (SECURITY.md, "How to report").
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security or confidentiality problem (private)
+    url: https://github.com/topazyo/microsoft-ai-security-control-plane/security/advisories/new
+    about: Never as a public issue. Opens GitHub private vulnerability reporting; read SECURITY.md first for what is in scope.
+  - name: Security policy — what to report here, and what goes to Microsoft
+    url: https://github.com/topazyo/microsoft-ai-security-control-plane/blob/main/SECURITY.md
+    about: Scope, the private reporting channel, and response expectations.
+  - name: Vulnerability in a Microsoft product or Microsoft Learn page
+    url: https://msrc.microsoft.com/
+    about: Not reported here. Use the Microsoft Security Response Center.
