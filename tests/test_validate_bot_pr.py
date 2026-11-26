@@ -921,9 +921,10 @@ class EscalationDirectionTests(unittest.TestCase):
 class HumanOnlyContainmentTests(unittest.TestCase):
     """GitHub Docs may be cited, but never watched.
 
-    The README and the new-row-proposal template both publish this to
-    contributors as a guarantee -- "registered under `human_only_sources`, never
-    under `sources`" -- while nothing enforced it. Per the registry's own
+    CONTRIBUTING.md and the new-row-proposal template both publish this to
+    contributors as a guarantee -- "registered under `human_only_sources` in
+    `.github/watch-state/sources.json`, never under `sources`" -- while nothing
+    enforced it. Per the registry's own
     reason the page is "perfectly fetchable, and that is exactly why the rule
     matters": the containment is what keeps GitHub Docs page content away from
     the model tier.
