@@ -291,6 +291,22 @@
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
     },
     {
+      "id": "github-managed-settings-get-started",
+      "title": "Getting started with enterprise-managed settings (GitHub Copilot)",
+      "matrix_rows": [13],
+      "cite_url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-enterprise/use-managed-settings/get-started",
+      "reason": "Human-only, as above (decision D3). The page the MCP management concepts page links for 'Clients supported by the managed-settings.json file': it lists the supported clients and states that not every client supports every property. First read 2026-11-26, closing row 13's long-open client-coverage gap.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
+      "id": "github-managed-settings-reference",
+      "title": "Enterprise managed settings (GitHub Copilot reference)",
+      "matrix_rows": [13],
+      "cite_url": "https://docs.github.com/en/copilot/reference/enterprise-administrators/enterprise-managed-settings",
+      "reason": "Human-only, as above. Carries the per-key 'Client support by key' table, which is the only place that says which clients honour allowedMcpServers and deniedMcpServers. On 2026-11-26 it marked both keys 'Not supported' for Copilot in the cloud running on GitHub Actions. A change in that table is what would move row 13's coverage boundary, so a human re-read should check it at each refresh. Its support marks are icons with aria-labels, so a text-only conversion of the page shows nothing in the support columns.",
+      "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
+    },
+    {
       "id": "nist-ai-600-1",
       "title": "NIST AI 600-1 -- Generative AI Profile",
       "crosswalk_rows": ["NIST AI 600-1 framework-versions row"],
