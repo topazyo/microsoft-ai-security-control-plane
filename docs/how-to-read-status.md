@@ -1,5 +1,7 @@
 # How to Read (and Verify) Capability Status
 
+<sub>Docs: [README](../README.md) · [Matrix](../matrix/capability-status-matrix.md) · [Cross-walk](../crosswalk/framework-crosswalk.md) · [Checklist](../checklists/capability-status-verification.md) · **Reading status** · [Scope](scope-and-out-of-scope.md) · [Cadence](agent-cadence.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)</sub>
+
 Microsoft AI-security capabilities sit at Generally Available, Public Preview, and Roadmap **simultaneously** — and the answer to "is this available?" is scattered across Microsoft Learn, the Message Center, the public Microsoft 365 Roadmap, and Tech Community posts that do not always agree. This guide defines the status labels used in this repository, shows where each one is sourced, and documents how matrix rows are verified.
 
 ## The four status labels

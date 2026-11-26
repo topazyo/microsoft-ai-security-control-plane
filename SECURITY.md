@@ -1,5 +1,7 @@
 # Security Policy
 
+<sub>Docs: [README](README.md) · [Matrix](matrix/capability-status-matrix.md) · [Cross-walk](crosswalk/framework-crosswalk.md) · [Checklist](checklists/capability-status-verification.md) · [Reading status](docs/how-to-read-status.md) · [Scope](docs/scope-and-out-of-scope.md) · [Cadence](docs/agent-cadence.md) · [Contributing](CONTRIBUTING.md) · **Security**</sub>
+
 ## What this policy covers
 
 This repository is documentation and a small set of standard-library Python

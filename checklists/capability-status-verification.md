@@ -1,5 +1,7 @@
 # Microsoft AI Security Capability Status Verification Checklist
 
+<sub>Docs: [README](../README.md) · [Matrix](../matrix/capability-status-matrix.md) · [Cross-walk](../crosswalk/framework-crosswalk.md) · **Checklist** · [Reading status](../docs/how-to-read-status.md) · [Scope](../docs/scope-and-out-of-scope.md) · [Cadence](../docs/agent-cadence.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)</sub>
+
 **Who this is for:** security architects and M365 security admins building or reviewing a Microsoft AI-adoption coverage map.
 **When to use it:** before briefing leadership, before publishing any capability claim, and at each monthly matrix refresh.
 
