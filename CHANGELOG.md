@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`SECURITY.md` — "Opening this repository in an AI coding agent".** It states what the tracked `.claude/` configuration does: two local-logging hooks, two subagent definitions with their tool grants, two rules files, and no MCP configuration. It also discloses that `status-adjudicator`'s "no network access" is an instruction, not an enforced permission. It adds that configuration to the policy's in-scope list.
 - **`LICENSE-CONTENT` — the guide's excerpts are carved out of the CC BY 4.0 grant.** They stay under the guide's own CC BY-SA 4.0 licence, which the cross-walk now links. The guide's §5.5.1 names this class of file as "an untrusted, execution-layer supply-chain vector".
 
+### Changed
+
+- **`README.md` — the license paragraph now states the carve-out above (2026-11-26).** Until then the README listed the cross-walk as CC BY 4.0 with no pointer to the share-alike terms on the quoted guide excerpts. The same change restructures the README for navigation (a "Start here" table, GitHub alerts, the file tree collapsed and corrected) and changes no other claim.
+
 ### Not done, and why
 
 - **The guide is not a fifth framework column.** It has no item IDs of its own. Its T-codes belong to the OWASP ASI *Threats & Mitigations* document, which has not been read here. Its own scope excludes "Detailed implementation guides for specific vendor platforms or frameworks", and it makes no availability claim about any Microsoft capability, so it is not a status source for any row.
