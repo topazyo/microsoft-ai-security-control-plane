@@ -95,13 +95,19 @@ Methodology: [`docs/how-to-read-status.md`](docs/how-to-read-status.md).
 
 ## Scope and out of scope
 
-| In scope | Out of scope |
-|---|---|
-| A capability-status matrix for the Microsoft AI-security stack — Microsoft Entra, Microsoft Purview, Microsoft Defender XDR / Defender for Cloud, Microsoft Sentinel, and GitHub — one row per capability. | Tenant-specific or non-public configuration, values, or topology. |
-| An item-level framework cross-walk (OWASP LLM 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM), versioned **"v0.2"** — every cell resolved, including the registration-gated CSA AICM column. | Secure SDLC / DevSecOps depth beyond GitHub Copilot policy and MCP governance — no AI-generated-code review gates, dependency/slopsquatting, secret-leakage, or CI/CD-guardrail content in v0.1 (a candidate for a later, separate contribution). |
-| A practitioner status-verification checklist and a "how to read status" guide. | Runnable detections / KQL — deferred to a separate Sentinel detection-pack repository. |
-| | Anything not backed by a public primary source; no NDA or private-preview-program material. |
-| | Screenshots, marketing figures presented as fact, or vendor-comparison content. |
+**✅ In scope:**
+
+- A capability-status matrix for the Microsoft AI-security stack — Microsoft Entra, Microsoft Purview, Microsoft Defender XDR / Defender for Cloud, Microsoft Sentinel, and GitHub — one row per capability.
+- An item-level framework cross-walk (OWASP LLM 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM), versioned **"v0.2"** — every cell resolved, including the registration-gated CSA AICM column.
+- A practitioner status-verification checklist and a "how to read status" guide.
+
+**🚫 Out of scope:**
+
+- Tenant-specific or non-public configuration, values, or topology.
+- Secure SDLC / DevSecOps depth beyond GitHub Copilot policy and MCP governance — no AI-generated-code review gates, dependency/slopsquatting, secret-leakage, or CI/CD-guardrail content in v0.1 (a candidate for a later, separate contribution).
+- Runnable detections / KQL — deferred to a separate Sentinel detection-pack repository.
+- Anything not backed by a public primary source; no NDA or private-preview-program material.
+- Screenshots, marketing figures presented as fact, or vendor-comparison content.
 
 Why each exclusion exists, and where that content belongs instead: [`docs/scope-and-out-of-scope.md`](docs/scope-and-out-of-scope.md).
 
@@ -121,7 +127,7 @@ Monthly refresh against the Microsoft Learn "What's new" pages and the Message C
 How all of this is executed, and what the automation is forbidden to do: [`docs/agent-cadence.md`](docs/agent-cadence.md).
 
 > [!TIP]
-> A weekly stale guard opens an issue labelled [`stale-rows`](https://github.com/topazyo/microsoft-ai-security-control-plane/issues?q=is%3Aissue+is%3Aopen+label%3Astale-rows) while any dated item is past the window, and closes it once nothing is. An empty list is not proof of freshness — the last-verified date on the row is the evidence.
+> A weekly stale guard opens an issue labelled [`stale-rows`](https://github.com/topazyo/microsoft-ai-security-control-plane/issues?q=is%3Aissue+is%3Aopen+label%3Astale-rows) while any date it tracks — matrix rows, the cross-walk's framework-version rows, and the checklist's validation stamp — is past the window, and closes it once none is. An empty list is not proof of freshness: other dates, such as the cross-walk's OWASP practitioner-guide read, are not tracked, and the last-verified date on the row is the evidence.
 
 ## Contributing
 
@@ -138,7 +144,7 @@ Security and confidentiality reports: [`SECURITY.md`](SECURITY.md). If you open 
 | The automation (`scripts/`, `.github/workflows/`) | **MIT** — see [`LICENSE`](LICENSE) |
 | The documentation content (the matrix, the cross-walk, the checklists, `docs/`, and the prose files) | **CC BY 4.0** — see [`LICENSE-CONTENT`](LICENSE-CONTENT) |
 
-CC BY keeps the cross-walk's author synthesis attributable as it is reused; MIT keeps the automation reusable without an attribution obligation attaching to code. Third-party material quoted here — Microsoft documentation text, and OWASP / MITRE ATLAS / NIST / CSA identifiers and titles — remains the property of its owners and is covered by neither license; see [`LICENSE-CONTENT`](LICENSE-CONTENT) and [`disclaimer.md`](disclaimer.md).
+CC BY keeps the cross-walk's author synthesis attributable as it is reused; MIT keeps the automation reusable without an attribution obligation attaching to code. Third-party material quoted here — Microsoft documentation text, and OWASP / MITRE ATLAS / NIST / CSA identifiers and titles — remains the property of its owners and is covered by neither license. Short excerpts quoted from OWASP's *Securing Agentic Applications V2* guide stay under that guide's own CC BY-SA 4.0 licence. See [`LICENSE-CONTENT`](LICENSE-CONTENT) and [`disclaimer.md`](disclaimer.md).
 
 ## Confidentiality note
 
