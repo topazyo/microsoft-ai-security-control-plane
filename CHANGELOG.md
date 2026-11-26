@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 **No status changes and no cross-walk cell moved.** This pass re-verifies the five items the stale guard has reported since v0.1.4 (issue #46). These are matrix rows 12 and 13 and the OWASP, NIST AI 600-1 and CSA AICM cross-walk rows. All five are human-only, so no automated run can advance them. They were re-read in a local session the maintainer directed, and an agent did the fetching and matching. Every last-verified date moves to **2026-11-26**, the UTC date of the fetches.
 
+### Added
+
+- `matrix/capability-status-matrix.md` — **an "At a glance" index above the full table, so every row's status can be read on one screen.** The full table runs eight columns and up to about 1,000 characters per row. The index has four columns: row link, capability, product, status. It carries labels only, says so, and points to the full table and row details for qualifiers, sources, dates and caveats. Capability names reuse each "Row N —" heading, so no new wording is published. A split status reads "Split: **GA** / **Public Preview**" and links to the row for which part is which. **No status, date, source or caveat changed, and the full table is byte-for-byte unchanged.**
+- `scripts/validate_bot_pr.py` — **check 12, `check_glance_index`, pins the index to the table.** The index states every status a second time, and an unchecked copy is how a label drifts. CI fails unless the index lists the table's rows in the same order, names and links each row's detail heading, and carries the same legend labels. A missing index is an error, not a pass. `column_indexes` now locates the table the way `matrix_table_rows` does, by requiring a "Last verified" column. With the old two-word test it would have keyed on the index's header instead. Fourteen tests cover the check and the locator, each failure case mutating the committed matrix. The suite is **399** tests.
+- `.claude/agents/status-adjudicator.md` — one line: a status change updates the index's label too.
+
 ### Changed
 
 - `matrix/capability-status-matrix.md` — **rows 12 and 13 re-read against all eight registered `docs.github.com` pages, and three quotes corrected because the pages changed.** Every GitHub Docs quote in both rows was checked against every page, not only its attributed one. Three negative controls, including the "Blocked by default" misquote corrected on 2026-09-10, matched nothing.
@@ -57,7 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - both workflow gates pinned to literals the script emits, in opposite directions;
     - the failure path pinned on all three steps that must survive a crashed check.
 
-    `test_watch_sources`'s credential-gate test now asserts that the credential clause is a top-level conjunct, rather than matching the line's old prefix. The suite is **385** tests.
+    `test_watch_sources`'s credential-gate test now asserts that the credential clause is a top-level conjunct, rather than matching the line's old prefix. That brought the suite to 385 tests.
 
 ## [Unreleased] — 2026-11-12
 

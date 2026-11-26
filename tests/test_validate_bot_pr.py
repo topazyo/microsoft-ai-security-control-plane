@@ -1996,5 +1996,127 @@ class ContributorInstructionTests(unittest.TestCase):
                 self.assertIn(expected, group_nine)
 
 
+class GlanceIndexTests(unittest.TestCase):
+    """The "At a glance" index publishes every status a second time; pin it.
+
+    Each failure case mutates the committed matrix rather than a fixture, so the
+    tests exercise the real index and the real table, and a positive control
+    proves the check reads them at all.
+    """
+
+    def setUp(self):
+        self.text = validate.MATRIX.read_text(encoding="utf-8")
+
+    def check(self, text: str) -> "validate.Findings":
+        findings = validate.Findings()
+        validate.check_glance_index(findings, text=text)
+        return findings
+
+    def index_line(self, row: int) -> str:
+        prefix = f"| [{row}](#row-{row}--"
+        lines = [line for line in self.text.splitlines() if line.startswith(prefix)]
+        self.assertEqual(len(lines), 1, f"expected one index line for row {row}")
+        return lines[0]
+
+    def mutate(self, old: str, new: str) -> str:
+        self.assertEqual(self.text.count(old), 1, f"mutation target is not unique: {old!r}")
+        return self.text.replace(old, new)
+
+    def test_the_committed_matrix_passes(self):
+        findings = self.check(self.text)
+        self.assertEqual(findings.errors, [])
+        self.assertTrue(any("glance index: all" in n for n in findings.notes), findings.notes)
+
+    def test_the_index_covers_every_table_row(self):
+        """Positive control: the check compared real rows, not an empty set."""
+        rows = validate.glance_index_rows(self.text)
+        self.assertEqual(len(rows), len(validate.matrix_row_ids(self.text)))
+
+    def test_a_label_that_disagrees_with_the_table_fails(self):
+        line = self.index_line(3)
+        changed = self.mutate(line, line.replace("**Requires further validation**", "**GA**"))
+        errors = self.check(changed).errors
+        self.assertTrue(any("index row 3" in e and "says ['Requires further validation']" in e for e in errors), errors)
+
+    def test_a_dropped_half_of_a_split_status_fails(self):
+        line = self.index_line(11)
+        changed = self.mutate(line, line.replace("Split: **GA** / **Public Preview**", "**GA**"))
+        self.assertTrue(any("index row 11" in e for e in self.check(changed).errors))
+
+    def test_a_status_change_in_the_table_alone_fails(self):
+        """The drift the check exists for: the row moves, the index does not."""
+        table_row = next(l for l in self.text.splitlines() if l.startswith("| 5 | "))
+        changed = self.mutate(table_row, table_row.replace("**Public Preview**", "**GA**", 1))
+        self.assertTrue(any("index row 5" in e for e in self.check(changed).errors))
+
+    def test_a_missing_row_fails(self):
+        changed = self.mutate(self.index_line(7) + "\n", "")
+        self.assertTrue(any("the index lists rows" in e for e in self.check(changed).errors))
+
+    def test_reordered_rows_fail(self):
+        one, two = self.index_line(1), self.index_line(2)
+        changed = self.mutate(one + "\n" + two, two + "\n" + one)
+        self.assertTrue(any("in that order" in e for e in self.check(changed).errors))
+
+    def test_a_broken_anchor_fails(self):
+        line = self.index_line(8)
+        changed = self.mutate(line, line.replace("-shadow-ai)", "-shadow-ai-)"))
+        self.assertTrue(any("index row 8 links to" in e for e in self.check(changed).errors))
+
+    def test_a_reworded_capability_fails(self):
+        line = self.index_line(9)
+        changed = self.mutate(line, line.replace("| Sentinel Microsoft Copilot connector |", "| Copilot connector |"))
+        self.assertTrue(any("index row 9 names the capability" in e for e in self.check(changed).errors))
+
+    def test_deleting_the_index_is_an_error_not_a_pass(self):
+        changed = self.text.replace(validate.GLANCE_HEADING, "## Something else", 1)
+        errors = self.check(changed).errors
+        self.assertTrue(any("no '## At a glance' table" in e for e in errors), errors)
+
+    def test_bold_words_outside_the_legend_are_ignored(self):
+        """Row 2's table cell bolds "Launched"; the index rightly carries GA alone."""
+        table_row = next(l for l in self.text.splitlines() if l.startswith("| 2 | "))
+        self.assertIn('**"Launched"**', table_row)
+        self.assertIn("| **GA** |", self.index_line(2))
+
+    def test_the_slug_matches_githubs_for_a_heading_with_punctuation(self):
+        self.assertEqual(
+            validate.github_heading_slug("Row 8 — Generative-AI app discovery (shadow AI)"),
+            "row-8--generative-ai-app-discovery-shadow-ai",
+        )
+
+
+class TableLocatorAgreementTests(unittest.TestCase):
+    """`column_indexes` must find the same header `matrix_table_rows` does.
+
+    The glance index above the capability table has Capability and Status
+    columns but no Last verified column. With the old two-word locator,
+    `column_indexes` keyed on the index's header while `matrix_table_rows` read
+    the capability table, so Status resolved to the wrong column.
+    """
+
+    def test_the_committed_matrix_resolves_the_capability_tables_header(self):
+        text = validate.MATRIX.read_text(encoding="utf-8")
+        indexes = validate.column_indexes(text)
+        for name in ("Status", "Last verified", "Primary source", "Notes / caveats"):
+            self.assertIn(name, indexes)
+
+    def test_a_preceding_table_without_last_verified_is_skipped(self):
+        text = "\n".join(
+            [
+                "| Row | Capability | Product | Status |",
+                "|---|---|---|---|",
+                "| [1](#row-1--x) | X | P | **GA** |",
+                "",
+                "| # | Capability | Status | Primary source | Last verified |",
+                "|---|---|---|---|---|",
+                "| 1 | X | **GA** | https://learn.microsoft.com/x | 2026-09-01 |",
+                "",
+            ]
+        )
+        self.assertEqual(validate.column_indexes(text)["Status"], 2)
+        self.assertEqual(len(validate.matrix_table_rows(text)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

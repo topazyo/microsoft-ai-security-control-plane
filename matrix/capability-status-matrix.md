@@ -15,6 +15,26 @@
 | **Roadmap** | Announced with a Microsoft 365 Roadmap entry; not yet rolling out. |
 | **Requires further validation** | Microsoft's own sources conflict or the status cannot be confirmed from primary sources alone; verify in your own tenant before relying on it. |
 
+## At a glance
+
+Every row's status on one screen. **Labels only:** each status's qualifiers, primary source, last-verified date and caveats are in the full table below and in the row's details. Read them before relying on a status. *Split* means parts of one capability sit at different labels; follow the row link for which part is which. CI fails if this index and the full table disagree.
+
+| Row | Capability | Product | Status |
+|---|---|---|---|
+| [1](#row-1--sensitivity-label-processing-restriction) | Sensitivity-label processing restriction | Purview DLP | **GA** |
+| [2](#row-2--external-web-search-block-on-sensitive-prompts) | External web search block on sensitive prompts | Purview DLP | **GA** |
+| [3](#row-3--typed-prompt-sit-blocking) | Typed-prompt SIT blocking | Purview DLP | **Requires further validation** |
+| [4](#row-4--defender-for-ai-scope-boundary) | Defender for AI scope boundary | Defender for Cloud | Split: **GA** / **Public Preview** |
+| [5](#row-5--external-email-grounding-block) | External-email grounding block | Purview DLP | **Public Preview** |
+| [6](#row-6--dspm-for-ai-licensing-prerequisites) | DSPM for AI licensing prerequisites | Purview DSPM for AI | **Requires further validation** |
+| [7](#row-7--dspm-for-ai-default-posture) | DSPM for AI default posture | Purview DSPM for AI | **Requires further validation** |
+| [8](#row-8--generative-ai-app-discovery-shadow-ai) | Generative-AI app discovery (shadow AI) | Defender for Cloud Apps | **GA** |
+| [9](#row-9--sentinel-microsoft-copilot-connector) | Sentinel Microsoft Copilot connector | Sentinel | **Requires further validation** |
+| [10](#row-10--prompt-injection-signals-in-advanced-hunting) | Prompt-injection signals in advanced hunting | Defender for Office 365 · Defender XDR | Split: **GA** / **Public Preview** |
+| [11](#row-11--conditional-access-for-workload-identities) | Conditional Access for workload identities | Entra | Split: **GA** / **Public Preview** |
+| [12](#row-12--github-copilot-policy-management) | GitHub Copilot policy management | GitHub Copilot | **Requires further validation** |
+| [13](#row-13--enterprise-governance-of-mcp-servers) | Enterprise governance of MCP servers | GitHub Copilot · Visual Studio Code · Visual Studio | Split: **GA** / **Public Preview** |
+
 ## The matrix (v0.1.4 — 13 rows, expanding)
 
 The four **DLP for Microsoft 365 Copilot** rows (1, 2, 3 and 5) are the worked example of why this matrix exists: what most people name as *one* feature is **four sub-capabilities that shipped on different schedules** — and as of the current verification date they still do not share one status.

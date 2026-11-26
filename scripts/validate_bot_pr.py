@@ -48,6 +48,13 @@ Checks
                            one asks whether the *date* is, which was the one
                            claim a run could set freely. See
                            `check_date_corroboration`.
+12. glance index         — the matrix's "At a glance" index repeats each row's
+                           status labels so they can be read on one screen. It
+                           must list the capability table's rows in the same
+                           order, name and link each row's "### Row N — ..."
+                           heading, and carry the same legend labels. A second
+                           copy of a status that nothing checks is how a label
+                           drifts. See `check_glance_index`.
 
 Exit code 0 = all checks pass. Non-zero = at least one violation.
 """
@@ -293,8 +300,15 @@ def matrix_table_rows(text: str) -> list[list[str]]:
 
 
 def column_indexes(text: str) -> dict[str, int]:
+    """Header positions of the capability table, located as `matrix_table_rows` does.
+
+    The locator requires "Last verified" as well as "Capability" and "Status".
+    The "At a glance" index above the table also has Capability and Status
+    columns, so the looser two-word test resolved its header instead and keyed
+    every check on the wrong columns.
+    """
     for line in text.splitlines():
-        if line.strip().startswith("|") and "Capability" in line and "Status" in line:
+        if line.strip().startswith("|") and "Capability" in line and "Status" in line and "Last verified" in line:
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             return {name: position for position, name in enumerate(cells)}
     return {}
@@ -573,6 +587,148 @@ def check_citation_containment(evidence_path: Path | None, findings: Findings) -
     else:
         findings.note(
             f"citation containment: all {len(primary)} primary-source citation(s) backed by the {origin}"
+        )
+
+
+GLANCE_HEADING = "## At a glance"
+
+
+def github_heading_slug(heading: str) -> str:
+    """The in-page anchor GitHub generates for a markdown heading's text."""
+    slug = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return slug.replace(" ", "-")
+
+
+def glance_index_rows(text: str) -> list[list[str]] | None:
+    """Data rows of the "At a glance" table, or None when the section is absent."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == GLANCE_HEADING), None)
+    if start is None:
+        return None
+    rows: list[list[str]] = []
+    seen_header = False
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            break
+        if not stripped.startswith("|"):
+            if seen_header:
+                break
+            continue
+        if not seen_header:
+            seen_header = True
+            continue
+        if set(stripped) <= set("|-: "):
+            continue
+        rows.append([c.strip() for c in stripped.strip("|").split("|")])
+    return rows
+
+
+def check_glance_index(findings: Findings, text: str | None = None) -> None:
+    """Pin the "At a glance" index to the capability table it summarises.
+
+    The index exists so a reader can see every row's status on one screen, which
+    publishes each status twice. An unchecked second copy is how a label drifts:
+    a row is re-adjudicated, the index keeps the old label, and the page
+    contradicts itself. So the index must list the table's rows in the same
+    order, name each by its "### Row N — ..." heading and link to that heading,
+    and carry the same legend labels in the same order. Bolded words that are
+    not legend labels (row 2's "Launched") are ignored on both sides.
+
+    A missing index is an error, not a pass: deleting the section would
+    otherwise switch the check off silently. `text` is an injection seam for
+    the tests, as in `check_matrix`.
+    """
+    if text is None:
+        if not MATRIX.exists():
+            findings.error("glance index", f"{MATRIX} not found")
+            return
+        text = MATRIX.read_text(encoding="utf-8")
+
+    index_rows = glance_index_rows(text)
+    if not index_rows:
+        findings.error(
+            "glance index",
+            f"no '{GLANCE_HEADING}' table found in {MATRIX.name}. The index is pinned to the "
+            "capability table; if it is being removed, remove this check in the same change.",
+        )
+        return
+    status_index = column_indexes(text).get("Status")
+    table_rows = matrix_table_rows(text)
+    if status_index is None or not table_rows:
+        findings.error(
+            "glance index",
+            "the capability table or its Status column could not be located, so the index "
+            "was not compared with anything",
+        )
+        return
+
+    def legend_labels(cell: str) -> list[str]:
+        return [label for label in normalise_label(cell) if label in LEGEND_LABELS]
+
+    table_order: list[str] = []
+    table_labels: dict[str, list[str]] = {}
+    for row in table_rows:
+        identifier = re.sub(r"[^0-9]", "", row[0]) if row else ""
+        table_order.append(identifier)
+        table_labels[identifier] = legend_labels(row[status_index]) if len(row) > status_index else []
+    headings = dict(re.findall(r"^### Row (\d+) — (.+?)\s*$", text, re.MULTILINE))
+
+    failures = 0
+    index_order: list[str] = []
+    for cells in index_rows:
+        link = re.fullmatch(r"\[(\d+)\]\(#([^)\s]+)\)", cells[0]) if cells else None
+        if link is None or len(cells) < 4:
+            findings.error(
+                "glance index",
+                f"index row '{' | '.join(cells)}' is not of the form "
+                "'| [N](#row-n--...) | capability | product | status |'",
+            )
+            failures += 1
+            continue
+        identifier, anchor = link.groups()
+        index_order.append(identifier)
+
+        heading = headings.get(identifier)
+        if heading is None:
+            findings.error(
+                "glance index", f"index row {identifier} has no '### Row {identifier} — ...' heading to link to"
+            )
+            failures += 1
+        else:
+            expected_anchor = github_heading_slug(f"Row {identifier} — {heading}")
+            if anchor != expected_anchor:
+                findings.error(
+                    "glance index",
+                    f"index row {identifier} links to '#{anchor}'; its heading's anchor is '#{expected_anchor}'",
+                )
+                failures += 1
+            if cells[1] != heading:
+                findings.error(
+                    "glance index",
+                    f"index row {identifier} names the capability '{cells[1]}'; its row-detail heading "
+                    f"says '{heading}'. Use the heading's wording.",
+                )
+                failures += 1
+
+        if identifier in table_labels and legend_labels(cells[3]) != table_labels[identifier]:
+            findings.error(
+                "glance index",
+                f"index row {identifier} carries {legend_labels(cells[3])}; the capability table says "
+                f"{table_labels[identifier]}. A status change must update both.",
+            )
+            failures += 1
+
+    if index_order != table_order:
+        findings.error(
+            "glance index",
+            f"the index lists rows {index_order}; the capability table has {table_order}, in that order",
+        )
+        failures += 1
+    if not failures:
+        findings.note(
+            f"glance index: all {len(index_order)} row(s) match the capability table's order and "
+            "labels, and link to their row-detail headings"
         )
 
 
@@ -1692,6 +1848,7 @@ def main() -> int:
 
     check_paths(files, findings, args.bot)
     check_matrix(findings)
+    check_glance_index(findings)
     check_source_coverage(findings)
     check_human_only_containment(findings)
     check_doc_counts(findings)
