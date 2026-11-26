@@ -153,11 +153,55 @@ jobs:
       # precedent: it fired, it was green, and nobody heard it. The first
       # notification this repository produced was the stale guard's issue, which
       # by construction arrives only once the window has already been missed.
-      - name: Tell a human the monthly consolidation is waiting for them
+      # The deferral used to be gated on the missing key alone, so a run that
+      # fired after the month's refresh had already merged still asked a human
+      # for it (issue #55, 2026-11-06). This reads what a consolidation leaves
+      # behind -- every watched-source matrix row stamped in the current UTC
+      # month -- and resolves every doubt towards "not recorded". It reads
+      # matrix rows only: cross-walk and checklist stamps are not part of the
+      # test, and the weekly stale guard still ages them.
+      #
+      # A crash here turns the run red, and the issue step and the staleness
+      # report below still run (`steps.month.outcome == 'failure'`). A failed
+      # check therefore files the issue on a red run, not a red run alone,
+      # because an email about a red run is easy to miss and an open issue
+      # stays visible.
+      - name: Check whether this month's consolidation is already recorded
+        id: month
         if: steps.creds.outputs.present != 'true'
+        run: python3 scripts/stale_guard.py --consolidation-check
+
+      # `== 'true'` here and `!= 'true'` on the next step, so an absent output
+      # (a crashed check) files the issue rather than recording a skip.
+      # tests/test_stale_guard.py pins both directions.
+      - name: Record that this month's consolidation is already done
+        if: steps.creds.outputs.present != 'true' && steps.month.outputs.consolidated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: ${{ steps.month.outputs.report }}
+          TITLE: 'Monthly consolidation is waiting on a human'
+        run: |
+          echo "::notice::No consolidation issue filed - this month's refresh is already recorded in the matrix stamps."
+          {
+            printf '## Monthly consolidation already recorded — %s\n\n' "$(date -u +'%Y-%m')"
+            printf '%s\n' "${REPORT}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          # Read-only. An issue left open from an earlier month is not rewritten
+          # or closed here -- only a human closes it -- but it is named, so a
+          # skip cannot leave it silently describing a month that has passed.
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "::warning::Issue #${existing} is still open from an earlier month. This month is recorded; close it once its own refresh has merged."
+            printf '\nIssue #%s is still open from an earlier month and was not changed by this run.\n' "${existing}" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Tell a human the monthly consolidation is waiting for them
+        if: (success() || steps.month.outcome == 'failure') && steps.creds.outputs.present != 'true' && steps.month.outputs.consolidated != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FAILED_SOURCES: ${{ steps.watch.outputs.failed_sources }}
+          LAGGING: ${{ steps.month.outputs.report }}
+          CHECK_OUTCOME: ${{ steps.month.outcome }}
           TITLE: 'Monthly consolidation is waiting on a human'
         run: |
           echo "::warning::Monthly consolidation did NOT run - no ANTHROPIC_API_KEY is configured. Run tier D3 locally; see docs/agent-cadence.md."
@@ -172,6 +216,12 @@ jobs:
           exists only on this runner and is discarded with it, so `fingerprints.json` is
           unchanged and the next run re-detects the same state.
           BODY
+            if [ "${CHECK_OUTCOME}" = "failure" ]; then
+              printf '\n**This run is red, not green:** the consolidation check itself failed, so this issue is filed rather than risk skipping the month. See the run log.\n'
+            fi
+            if [ -n "${LAGGING}" ]; then
+              printf '\n**Why this month is not recorded yet:**\n\n%s\n' "${LAGGING}"
+            fi
             if [ -n "${FAILED_SOURCES}" ]; then
               printf '\n**Unreachable this run:** %s - do not advance those rows dates.\n' "${FAILED_SOURCES}"
             fi
@@ -196,7 +246,9 @@ jobs:
           human can know whether the consolidation actually happened, and a workflow
           that closed it by the calendar would be retracting an outstanding obligation
           rather than discharging one. If it is still open when the next monthly run
-          fires, that run rewrites this body to the new month and appends a comment._
+          fires and that month is not yet recorded either, that run rewrites this body
+          to the new month and appends a comment. If that month is already recorded,
+          the run leaves this issue unchanged and names it in its run summary._
           BODY
           } > "${RUNNER_TEMP}/deferral.md"
 
@@ -227,13 +279,17 @@ jobs:
       # `|| true` is gone, and the gate reads the script's own output instead of
       # grepping its prose: `|| true` turned a crash into "no staleness", and a
       # `grep -q "exceed the"` would have missed any rewording of that sentence.
+      # Also runs after a failed consolidation check, so that failure does not
+      # take the staleness report down with it. Any other earlier failure still
+      # skips it, as before.
       - name: Report residual staleness after the refresh
         id: stale
+        if: success() || steps.month.outcome == 'failure'
         shell: bash
         run: python3 scripts/stale_guard.py | tee staleness.txt
 
       - name: Record residual staleness in the run summary
-        if: steps.stale.outputs.stale != 'false'
+        if: (success() || steps.month.outcome == 'failure') && steps.stale.outputs.stale != 'false'
         run: |
           echo "::warning::Staleness remains after the monthly refresh; see the run summary."
           cat staleness.txt >> "${GITHUB_STEP_SUMMARY}"

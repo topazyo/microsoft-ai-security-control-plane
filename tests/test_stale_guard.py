@@ -897,5 +897,273 @@ class LiveTrackedFileTests(GuardRunner):
         self.assertIn(oldest.isoformat(), report)
 
 
+# -- monthly consolidation check (issue #55) --------------------------------
+
+# Rows 1 and 2 are watched, row 3 is human-only. The human-only row is the one
+# that must never block or satisfy the answer.
+CONSOLIDATION_REGISTRY = {
+    "sources": [
+        {"id": "watched-a", "matrix_rows": [1]},
+        {"id": "watched-b", "matrix_rows": [1, 2]},
+    ],
+    "human_only_sources": [{"id": "human", "matrix_rows": [3]}],
+}
+
+
+def synthetic_matrix(dates) -> str:
+    rows = "\n".join(
+        f"| {number} | Synthetic capability {number} | **GA** | {iso} | fixture row |"
+        for number, iso in enumerate(dates, start=1)
+    )
+    return (
+        "# Synthetic matrix fixture\n\n"
+        "| # | Capability | Status | Last verified | Notes |\n"
+        "|---|---|---|---|---|\n"
+        f"{rows}\n\nProse after the table.\n"
+    )
+
+
+class ConsolidationStatusTests(unittest.TestCase):
+    """The pure decision. Every doubt must resolve to "not consolidated".
+
+    A wrong "not consolidated" costs one issue a human closes; a wrong
+    "consolidated" silently skips a month's obligation, which is the failure
+    this whole cadence exists to prevent. So each fail-closed branch has a test.
+    """
+
+    TODAY = datetime(2026, 11, 6).date()
+
+    def status(self, dates, registry=CONSOLIDATION_REGISTRY, today=None):
+        return guard.consolidation_status(synthetic_matrix(dates), registry, today or self.TODAY)
+
+    def test_every_watched_row_stamped_this_month_is_consolidated(self):
+        self.assertEqual(self.status(("2026-11-04", "2026-11-05", "2026-09-10")), (True, []))
+
+    def test_one_watched_row_from_last_month_is_not(self):
+        ok, reasons = self.status(("2026-11-04", "2026-09-09", "2026-11-04"))
+        self.assertFalse(ok)
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("matrix row 2", reasons[0])
+        self.assertIn("2026-09-09", reasons[0])
+
+    def test_a_human_only_row_neither_blocks_nor_satisfies(self):
+        # Row 3 stale: still consolidated. Row 3 fresh but watched rows stale: still not.
+        self.assertTrue(self.status(("2026-11-01", "2026-11-01", "2025-01-01"))[0])
+        self.assertFalse(self.status(("2026-10-31", "2026-10-31", "2026-11-06"))[0])
+
+    def test_the_month_boundary_is_the_calendar_month(self):
+        self.assertFalse(self.status(("2026-10-31", "2026-11-01"))[0])
+        self.assertTrue(self.status(("2026-11-01", "2026-11-30"), today=datetime(2026, 11, 30).date())[0])
+        # Same stamps, next month: the obligation is new again.
+        self.assertFalse(self.status(("2026-11-01", "2026-11-30"), today=datetime(2026, 12, 1).date())[0])
+
+    def test_a_registry_with_no_watched_row_is_not_consolidated(self):
+        empty = {"sources": [{"id": "x", "crosswalk_rows": ["Some framework row"]}], "human_only_sources": []}
+        ok, reasons = self.status(("2026-11-04",), registry=empty)
+        self.assertFalse(ok)
+        self.assertIn("claims no matrix row", reasons[0])
+
+    def test_a_watched_row_missing_from_the_matrix_is_not_consolidated(self):
+        ok, reasons = self.status(("2026-11-04",))  # row 2 absent
+        self.assertFalse(ok)
+        self.assertIn("matrix row 2", reasons[0])
+
+    def test_an_unreadable_table_is_not_consolidated(self):
+        text = synthetic_matrix(("2026-11-04", "2026-11-04")).replace("Last verified", "Checked")
+        ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+        self.assertFalse(ok)
+        self.assertIn("no last-verified date", reasons[0])
+
+    def test_a_non_integer_row_identifier_is_not_consolidated(self):
+        text = synthetic_matrix(("2026-11-04", "2026-11-04")).replace("| 2 |", "| 2a |")
+        ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+        self.assertFalse(ok)
+        self.assertTrue(any("'2a'" in reason for reason in reasons), reasons)
+
+    def test_a_duplicated_row_cannot_hide_a_stale_stamp(self):
+        """A bad merge that leaves row 2 twice, old stamp first, fresh one second."""
+        text = synthetic_matrix(("2026-11-04", "2026-09-09")).replace(
+            "\n\nProse after the table.",
+            "\n| 2 | Synthetic capability 2 | **GA** | 2026-11-04 | duplicate |\n\nProse after the table.",
+        )
+        ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+        self.assertFalse(ok)
+        self.assertTrue(any("appears more than once" in reason for reason in reasons), reasons)
+
+    def test_a_non_ascii_digit_identifier_is_rejected_without_a_traceback(self):
+        for odd in ("²", "١"):  # superscript two, Arabic-Indic one
+            with self.subTest(identifier=odd):
+                text = synthetic_matrix(("2026-11-04", "2026-11-04")).replace("| 1 |", f"| {odd} |")
+                ok, reasons = guard.consolidation_status(text, CONSOLIDATION_REGISTRY, self.TODAY)
+                self.assertFalse(ok)
+                self.assertTrue(any("is not an integer" in reason for reason in reasons), reasons)
+
+    def test_non_integer_registry_rows_are_ignored_like_the_validator_ignores_them(self):
+        registry = {"sources": [{"id": "x", "matrix_rows": [1, "2"]}]}
+        self.assertEqual(guard.watched_matrix_rows(registry), {1})
+
+
+class ConsolidationRowSetTests(unittest.TestCase):
+    """One definition of "rows a watched source backs", shared with the validator."""
+
+    def live_registry(self) -> dict:
+        return json.loads((REPO_ROOT / ".github" / "watch-state" / "sources.json").read_text(encoding="utf-8"))
+
+    def test_the_row_set_matches_the_validators_claimed_rows(self):
+        registry = self.live_registry()
+        self.assertEqual(guard.watched_matrix_rows(registry), validate.claimed_rows(registry["sources"]))
+
+    def test_a_stale_human_only_row_does_not_block_the_live_registry(self):
+        """On the real registry: watched rows fresh, human-only rows years old."""
+        registry = self.live_registry()
+        watched = guard.watched_matrix_rows(registry)
+        self.assertTrue(watched)
+        human_only_exclusive = validate.claimed_rows(registry["human_only_sources"]) - watched
+        self.assertTrue(human_only_exclusive, "expected at least one human-only-backed row to exclude")
+        rows = range(1, max(watched | human_only_exclusive) + 1)
+        dates = ["2026-11-04" if row in watched else "2020-01-01" for row in rows]
+        ok, reasons = guard.consolidation_status(synthetic_matrix(dates), registry, datetime(2026, 11, 6).date())
+        self.assertTrue(ok, reasons)
+
+    def test_every_live_watched_row_has_an_identifier_the_check_accepts(self):
+        """Read with the check's own parser and rule, not the validator's looser one.
+
+        A watched row whose cell the check rejects (bold, a suffix) would hold
+        the deferral open every month while a digit-stripping parser said fine.
+        """
+        matrix = (REPO_ROOT / "matrix" / "capability-status-matrix.md").read_text(encoding="utf-8")
+        accepted = {
+            int(identifier)
+            for identifier, _ in guard.parse_table_dates(matrix, "Last verified")
+            if re.fullmatch(r"[0-9]+", identifier)
+        }
+        self.assertLessEqual(guard.watched_matrix_rows(self.live_registry()), accepted)
+
+
+class ConsolidationCheckCliTests(GuardRunner):
+    """`--consolidation-check` as the workflow calls it."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.write_registry(json.dumps(CONSOLIDATION_REGISTRY))
+
+    def test_consolidated_month_emits_true(self):
+        self.write_matrix(("2026-11-04", "2026-11-05"))
+        code, report, outputs = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        self.assertEqual(code, 0)
+        self.assertEqual(outputs["consolidated"], "true", report)
+        self.assertIn("is recorded", outputs["report"])
+
+    def test_unconsolidated_month_emits_false_and_names_the_rows(self):
+        self.write_matrix(("2026-11-04", "2026-10-02"))
+        code, report, outputs = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        self.assertEqual(code, 0)
+        self.assertEqual(outputs["consolidated"], "false", report)
+        self.assertIn("matrix row 2: last verified 2026-10-02", outputs["report"])
+
+    def test_an_unreadable_registry_fails_the_step_and_emits_false(self):
+        self.write_matrix(("2026-11-04", "2026-11-04"))
+        self.write_registry("{not json")
+        code, _, outputs = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        self.assertEqual(code, 1)
+        self.assertEqual(outputs["consolidated"], "false")
+
+    def test_a_missing_matrix_fails_the_step(self):
+        code, _, outputs = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        self.assertEqual(code, 1)
+        self.assertEqual(outputs["consolidated"], "false")
+
+    def test_the_default_mode_does_not_emit_the_consolidation_output(self):
+        """The later `id: stale` step reads the default outputs; they must not change."""
+        self.write_repository()
+        _, _, outputs = self.run_guard("--today", AT_WINDOW, "--window-days", str(WINDOW))
+        self.assertEqual(set(outputs), {"stale", "report", "stale_count"})
+
+
+class MonthlyRefreshDeferralGateTests(GuardRunner):
+    """monthly-refresh.yml gates the deferral issue on the consolidation output.
+
+    Same shape as WorkflowOutputContractTests: the literal must be one the script
+    emits, and the two gates point in opposite directions so that an absent
+    output files the issue rather than recording a skip.
+    """
+
+    WORKFLOW = REPO_ROOT / ".github" / "workflows" / "monthly-refresh.yml"
+    CHECK_STEP = "Check whether this month's consolidation is already recorded"
+    SKIP_STEP = "Record that this month's consolidation is already done"
+    FILE_STEP = "Tell a human the monthly consolidation is waiting for them"
+    GATE = re.compile(r"steps\.month\.outputs\.consolidated\s*(==|!=)\s*['\"]([^'\"]+)['\"]")
+
+    def step_ifs(self) -> dict[str, str]:
+        found: dict[str, str] = {}
+        current = None
+        for line in self.WORKFLOW.read_text(encoding="utf-8").splitlines():
+            named = WorkflowOutputContractTests.STEP_NAME.match(line)
+            if named:
+                current = named.group(1)
+                continue
+            stripped = line.strip()
+            if current and stripped.startswith("if:"):
+                found[current] = stripped
+        return found
+
+    def gate(self, step: str) -> tuple[str, str]:
+        condition = self.step_ifs().get(step, "")
+        matches = self.GATE.findall(condition)
+        self.assertEqual(len(matches), 1, f"expected one consolidation gate on {step!r}: {condition!r}")
+        return matches[0]
+
+    def emitted(self) -> set[str]:
+        self.write_registry(json.dumps(CONSOLIDATION_REGISTRY))
+        self.write_matrix(("2026-11-04", "2026-11-04"))
+        _, _, yes = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        self.write_matrix(("2026-10-04", "2026-11-04"))
+        _, _, no = self.run_guard("--consolidation-check", "--today", "2026-11-06")
+        return {yes["consolidated"], no["consolidated"]}
+
+    def test_the_check_step_runs_the_script_in_consolidation_mode(self):
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        block = text[text.index(self.CHECK_STEP):]
+        self.assertIn("id: month", block[:300])
+        self.assertIn("python3 scripts/stale_guard.py --consolidation-check", block[:400])
+
+    def test_both_gates_compare_against_a_literal_the_script_emits(self):
+        emitted = self.emitted()
+        self.assertEqual(emitted, {"true", "false"})
+        for step in (self.SKIP_STEP, self.FILE_STEP):
+            with self.subTest(step=step):
+                self.assertIn(self.gate(step)[1], emitted)
+
+    def test_an_absent_output_files_the_issue(self):
+        operator, literal = self.gate(self.FILE_STEP)
+        files = ("" != literal) if operator == "!=" else ("" == literal)
+        self.assertTrue(files, f"`consolidated {operator} '{literal}'` skips the issue on an absent output")
+
+    def test_an_absent_output_does_not_record_a_skip(self):
+        operator, literal = self.gate(self.SKIP_STEP)
+        skips = ("" != literal) if operator == "!=" else ("" == literal)
+        self.assertFalse(skips, f"`consolidated {operator} '{literal}'` records a skip on an absent output")
+
+    def test_the_issue_step_still_requires_the_missing_key(self):
+        self.assertIn("steps.creds.outputs.present != 'true'", self.step_ifs()[self.FILE_STEP])
+
+    def test_a_failed_check_still_files_the_issue_and_reports_staleness(self):
+        """Without this, a crashed check skips both by implicit success().
+
+        The run would be red but the obligation would reach a human only as a
+        failed-run email, and the staleness report would vanish with it.
+        """
+        ifs = self.step_ifs()
+        for step in (self.FILE_STEP, "Report residual staleness after the refresh",
+                     "Record residual staleness in the run summary"):
+            with self.subTest(step=step):
+                self.assertIn("steps.month.outcome == 'failure'", ifs.get(step, ""))
+
+    def test_the_check_runs_before_both_steps_that_read_it(self):
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        self.assertLess(text.index(self.CHECK_STEP), text.index(self.SKIP_STEP))
+        self.assertLess(text.index(self.CHECK_STEP), text.index(self.FILE_STEP))
+
+
 if __name__ == "__main__":
     unittest.main()
