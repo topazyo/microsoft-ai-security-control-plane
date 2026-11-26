@@ -848,10 +848,11 @@ def check_source_coverage(findings: Findings, registry: dict | None = None) -> N
 def check_human_only_containment(findings: Findings, registry: dict | None = None) -> None:
     """A GitHub Docs source may be registered human-only, never watched.
 
-    This rule was published as a guarantee on two reader-facing surfaces -- the
-    README and the new-row-proposal template both tell a contributor that such a
-    source "is registered under `human_only_sources`, never under `sources`" --
-    while nothing enforced it. `ALLOWED_SOURCE_HOSTS` admits `docs.github.com`
+    This rule was published as a guarantee on two reader-facing surfaces --
+    CONTRIBUTING.md and the new-row-proposal template both tell a contributor
+    that such a source "is registered under `human_only_sources` in
+    `.github/watch-state/sources.json`, never under `sources`" -- while nothing
+    enforced it. `ALLOWED_SOURCE_HOSTS` admits `docs.github.com`
     for citation, and the registry note records the containment as the condition
     of that admission, but a maintainer could move the entry into `sources` and
     every gate would stay green.
