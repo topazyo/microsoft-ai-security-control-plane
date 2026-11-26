@@ -1,5 +1,7 @@
 # Disclaimer
 
+<sub>Docs: [README](README.md) · [Matrix](matrix/capability-status-matrix.md) · [Cross-walk](crosswalk/framework-crosswalk.md) · [Checklist](checklists/capability-status-verification.md) · [Reading status](docs/how-to-read-status.md) · [Scope](docs/scope-and-out-of-scope.md) · [Cadence](docs/agent-cadence.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)</sub>
+
 This repository is an independent, community-maintained reference. It is **not** affiliated with, sponsored by, or endorsed by Microsoft Corporation, OWASP, MITRE, NIST, or the Cloud Security Alliance. All product names and trademarks belong to their respective owners.
 
 ## Validate before you rely on anything here

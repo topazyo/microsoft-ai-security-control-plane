@@ -1,5 +1,7 @@
 # Contributing
 
+<sub>Docs: [README](README.md) · [Matrix](matrix/capability-status-matrix.md) · [Cross-walk](crosswalk/framework-crosswalk.md) · [Checklist](checklists/capability-status-verification.md) · [Reading status](docs/how-to-read-status.md) · [Scope](docs/scope-and-out-of-scope.md) · [Cadence](docs/agent-cadence.md) · **Contributing** · [Security](SECURITY.md)</sub>
+
 This repository's entire value is **verified, dated capability status**. Status
 accuracy is itself the control. A row that looks right but was never checked
 against a primary source is worse than no row, because it will be trusted.

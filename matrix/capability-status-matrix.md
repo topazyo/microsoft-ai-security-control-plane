@@ -1,5 +1,7 @@
 # Capability-Status Matrix
 
+<sub>Docs: [README](../README.md) · **Matrix** · [Cross-walk](../crosswalk/framework-crosswalk.md) · [Checklist](../checklists/capability-status-verification.md) · [Reading status](../docs/how-to-read-status.md) · [Scope](../docs/scope-and-out-of-scope.md) · [Cadence](../docs/agent-cadence.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)</sub>
+
 **The spine of this repository:** one row per Microsoft AI-security capability, with its release status, a primary-source URL, and the date the status was last verified against that source.
 
 > **Read `docs/how-to-read-status.md` first** if you are unsure what GA / Public Preview / Roadmap / Requires further validation mean here, or how each status is sourced.

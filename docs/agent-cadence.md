@@ -1,5 +1,7 @@
 # Automated Refresh Cadence
 
+<sub>Docs: [README](../README.md) · [Matrix](../matrix/capability-status-matrix.md) · [Cross-walk](../crosswalk/framework-crosswalk.md) · [Checklist](../checklists/capability-status-verification.md) · [Reading status](how-to-read-status.md) · [Scope](scope-and-out-of-scope.md) · **Cadence** · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)</sub>
+
 How the monthly refresh committed to in the README's **Maintenance & cadence**
 section is actually executed, and what the automation is and is not allowed to do.
 

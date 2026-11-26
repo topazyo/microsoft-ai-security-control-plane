@@ -1,5 +1,7 @@
 # Scope and Out of Scope
 
+<sub>Docs: [README](../README.md) · [Matrix](../matrix/capability-status-matrix.md) · [Cross-walk](../crosswalk/framework-crosswalk.md) · [Checklist](../checklists/capability-status-verification.md) · [Reading status](how-to-read-status.md) · **Scope** · [Cadence](agent-cadence.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)</sub>
+
 This expands the README's scope summary. It exists so that "why isn't X here?"
 has a written answer, and so that scope drift is a visible decision rather than
 an accident.
