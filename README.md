@@ -95,13 +95,13 @@ Methodology: [`docs/how-to-read-status.md`](docs/how-to-read-status.md).
 
 ## Scope and out of scope
 
-**✅ In scope:**
+**In scope:**
 
 - A capability-status matrix for the Microsoft AI-security stack — Microsoft Entra, Microsoft Purview, Microsoft Defender XDR / Defender for Cloud, Microsoft Sentinel, and GitHub — one row per capability.
 - An item-level framework cross-walk (OWASP LLM 2026, MITRE ATLAS, NIST AI 600-1, CSA AICM), versioned **"v0.2"** — every cell resolved, including the registration-gated CSA AICM column.
 - A practitioner status-verification checklist and a "how to read status" guide.
 
-**🚫 Out of scope:**
+**Out of scope:**
 
 - Tenant-specific or non-public configuration, values, or topology.
 - Secure SDLC / DevSecOps depth beyond GitHub Copilot policy and MCP governance — no AI-generated-code review gates, dependency/slopsquatting, secret-leakage, or CI/CD-guardrail content in v0.1 (a candidate for a later, separate contribution).
@@ -144,7 +144,7 @@ Security and confidentiality reports: [`SECURITY.md`](SECURITY.md). If you open 
 | The automation (`scripts/`, `.github/workflows/`) | **MIT** — see [`LICENSE`](LICENSE) |
 | The documentation content (the matrix, the cross-walk, the checklists, `docs/`, and the prose files) | **CC BY 4.0** — see [`LICENSE-CONTENT`](LICENSE-CONTENT) |
 
-CC BY keeps the cross-walk's author synthesis attributable as it is reused; MIT keeps the automation reusable without an attribution obligation attaching to code. Third-party material quoted here — Microsoft documentation text, and OWASP / MITRE ATLAS / NIST / CSA identifiers and titles — remains the property of its owners and is covered by neither license. Short excerpts quoted from OWASP's *Securing Agentic Applications V2* guide stay under that guide's own CC BY-SA 4.0 licence. See [`LICENSE-CONTENT`](LICENSE-CONTENT) and [`disclaimer.md`](disclaimer.md).
+CC BY keeps the cross-walk's author synthesis attributable as it is reused; MIT keeps the automation reusable without an attribution obligation attaching to code. Third-party material quoted here — Microsoft documentation text, and OWASP / MITRE ATLAS / NIST / CSA identifiers and titles — remains the property of its owners and is covered by neither license. Short excerpts quoted from OWASP's *Securing Agentic Applications V2* guide stay under that guide's own CC BY-SA 4.0 license. See [`LICENSE-CONTENT`](LICENSE-CONTENT) and [`disclaimer.md`](disclaimer.md).
 
 ## Confidentiality note
 
