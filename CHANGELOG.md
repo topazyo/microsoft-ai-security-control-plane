@@ -11,7 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `matrix/capability-status-matrix.md` — **an "At a glance" index above the full table, so every row's status can be read on one screen.** The full table runs eight columns and up to about 1,000 characters per row. The index has four columns: row link, capability, product, status. It carries labels only, says so, and points to the full table and row details for qualifiers, sources, dates and caveats. Capability names reuse each "Row N —" heading, so no new wording is published. A split status reads "Split: **GA** / **Public Preview**" and links to the row for which part is which. **No status, date, source or caveat changed, and the full table is byte-for-byte unchanged.**
-- `scripts/validate_bot_pr.py` — **check 12, `check_glance_index`, pins the index to the table.** The index states every status a second time, and an unchecked copy is how a label drifts. CI fails unless the index lists the table's rows in the same order, names and links each row's detail heading, and carries the same legend labels. A missing index is an error, not a pass. `column_indexes` now locates the table the way `matrix_table_rows` does, by requiring a "Last verified" column. With the old two-word test it would have keyed on the index's header instead. Fourteen tests cover the check and the locator, each failure case mutating the committed matrix. The suite is **399** tests.
+- `scripts/validate_bot_pr.py` — **check 12, `check_glance_index`, pins the index to the table.** The index states every status a second time, and an unchecked copy is how a label drifts. CI fails unless all of the following hold:
+  - the index lists the table's rows once each, in the same order;
+  - it names and links each row's detail heading;
+  - its status cells hold exactly the row's legend labels and nothing else: `**Label**`, or `Split: **A** / **B**`;
+  - it is a single table with the fixed header, placed before the full table.
+
+  Product names are shortened and are not compared. A missing index is an error, not a pass. `column_indexes` now locates the table the way `matrix_table_rows` does, by requiring a "Last verified" column. With the old two-word test it would have keyed on the index's header instead. Thirty-three tests cover the check and the locator. Every failure case runs on a synthetic matrix, so a legitimate status change cannot break a test that an automated pull request could not repair. The suite is **418** tests.
 - `.claude/agents/status-adjudicator.md` — one line: a status change updates the index's label too.
 
 ### Changed

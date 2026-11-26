@@ -17,7 +17,7 @@
 
 ## At a glance
 
-Every row's status on one screen. **Labels only:** each status's qualifiers, primary source, last-verified date and caveats are in the full table below and in the row's details. Read them before relying on a status. *Split* means parts of one capability sit at different labels; follow the row link for which part is which. CI fails if this index and the full table disagree.
+Every row's status on one screen. **Labels only:** each status's qualifiers, primary source, last-verified date and caveats are in the full table below and in the row's details. Read them before relying on a status. *Split* means parts of one capability sit at different labels; follow the row link for which part is which. CI fails if this index's rows, capability names or status labels disagree with the full table. Product names are shortened and not checked.
 
 | Row | Capability | Product | Status |
 |---|---|---|---|

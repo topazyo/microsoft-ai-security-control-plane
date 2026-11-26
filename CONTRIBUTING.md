@@ -55,8 +55,9 @@ split across pull requests. **One row = one pull request containing all of:**
 6. Removal of the capability from the "Planned rows" list.
 7. A line in the matrix's **At a glance** index: the row link, the details
    heading's wording, a short product name, and the same legend labels as the
-   table row. CI fails if the index and the table disagree, so a later status
-   change updates both too.
+   table row, written as `**Label**` or `Split: **A** / **B**` with no other
+   text. CI fails if the index's rows, names or labels disagree with the
+   table, so a later status change updates both too.
 
 ### Refreshing the baseline without destroying detection state
 

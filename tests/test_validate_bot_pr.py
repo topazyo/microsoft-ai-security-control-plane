@@ -1999,91 +1999,218 @@ class ContributorInstructionTests(unittest.TestCase):
 class GlanceIndexTests(unittest.TestCase):
     """The "At a glance" index publishes every status a second time; pin it.
 
-    Each failure case mutates the committed matrix rather than a fixture, so the
-    tests exercise the real index and the real table, and a positive control
-    proves the check reads them at all.
+    Failure cases run on a small synthetic matrix, never the committed one. A
+    test that mutated a live row's label would break the moment that row was
+    legitimately re-adjudicated, and an automated pull request cannot repair
+    `tests/`. The committed matrix is used only for positive controls, which
+    hold for any consistent matrix.
     """
 
-    def setUp(self):
-        self.text = validate.MATRIX.read_text(encoding="utf-8")
+    FIXTURE = "\n".join(
+        [
+            "# Capability-Status Matrix",
+            "",
+            "## At a glance",
+            "",
+            "Labels only.",
+            "",
+            "| Row | Capability | Product | Status |",
+            "|---|---|---|---|",
+            "| [1](#row-1--alpha-control) | Alpha control | P1 | **GA** |",
+            "| [2](#row-2--beta-control-preview) | Beta control (preview) | P2 | Split: **GA** / **Public Preview** |",
+            "| [3](#row-3--gamma-control) | Gamma control | P3 | **Requires further validation** |",
+            "",
+            "## The matrix (v0 — 3 rows, expanding)",
+            "",
+            "| # | Capability | Status | Primary source | Last verified |",
+            "|---|---|---|---|---|",
+            '| 1 | A | **GA** (Roadmap status **"Launched"**) | https://learn.microsoft.com/a | 2026-11-01 |',
+            "| 2 | B | **GA**; one part: **Public Preview** | https://learn.microsoft.com/b | 2026-11-01 |",
+            "| 3 | C | **Requires further validation** | https://learn.microsoft.com/c | 2026-11-01 |",
+            "",
+            "## Row details",
+            "",
+            "### Row 1 — Alpha control",
+            "",
+            "### Row 2 — Beta control (preview)",
+            "",
+            "### Row 3 — Gamma control",
+            "",
+        ]
+    )
 
-    def check(self, text: str) -> "validate.Findings":
+    def errors(self, text: str) -> list[str]:
         findings = validate.Findings()
         validate.check_glance_index(findings, text=text)
-        return findings
+        return findings.errors
 
-    def index_line(self, row: int) -> str:
-        prefix = f"| [{row}](#row-{row}--"
-        lines = [line for line in self.text.splitlines() if line.startswith(prefix)]
-        self.assertEqual(len(lines), 1, f"expected one index line for row {row}")
-        return lines[0]
+    def mutate(self, old: str, new: str, count: int = 1) -> str:
+        self.assertEqual(self.FIXTURE.count(old), count, f"mutation target count is wrong: {old!r}")
+        changed = self.FIXTURE.replace(old, new)
+        self.assertNotEqual(changed, self.FIXTURE, "the mutation changed nothing")
+        return changed
 
-    def mutate(self, old: str, new: str) -> str:
-        self.assertEqual(self.text.count(old), 1, f"mutation target is not unique: {old!r}")
-        return self.text.replace(old, new)
+    def assertFails(self, text: str, fragment: str) -> None:
+        errors = self.errors(text)
+        self.assertTrue(any(fragment in e for e in errors), f"{fragment!r} not in {errors}")
+
+    # Positive controls.
+
+    def test_the_fixture_passes(self):
+        self.assertEqual(self.errors(self.FIXTURE), [])
 
     def test_the_committed_matrix_passes(self):
-        findings = self.check(self.text)
+        findings = validate.Findings()
+        validate.check_glance_index(findings)
         self.assertEqual(findings.errors, [])
         self.assertTrue(any("glance index: all" in n for n in findings.notes), findings.notes)
 
-    def test_the_index_covers_every_table_row(self):
-        """Positive control: the check compared real rows, not an empty set."""
-        rows = validate.glance_index_rows(self.text)
-        self.assertEqual(len(rows), len(validate.matrix_row_ids(self.text)))
+    def test_the_committed_index_covers_every_table_row(self):
+        text = validate.MATRIX.read_text(encoding="utf-8")
+        rows, problems = validate.glance_index_rows(text)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(rows), len(validate.matrix_row_ids(text)))
 
-    def test_a_label_that_disagrees_with_the_table_fails(self):
-        line = self.index_line(3)
-        changed = self.mutate(line, line.replace("**Requires further validation**", "**GA**"))
-        errors = self.check(changed).errors
-        self.assertTrue(any("index row 3" in e and "says ['Requires further validation']" in e for e in errors), errors)
+    def test_bold_words_outside_the_legend_are_not_carried_over(self):
+        """Row 1's table cell bolds "Launched"; the index carries GA alone and passes."""
+        self.assertIn('**"Launched"**', self.FIXTURE)
+        self.assertEqual(self.errors(self.FIXTURE), [])
 
-    def test_a_dropped_half_of_a_split_status_fails(self):
-        line = self.index_line(11)
-        changed = self.mutate(line, line.replace("Split: **GA** / **Public Preview**", "**GA**"))
-        self.assertTrue(any("index row 11" in e for e in self.check(changed).errors))
+    # Labels.
+
+    def test_an_index_label_that_disagrees_with_the_table_fails(self):
+        changed = self.mutate(
+            "| P3 | **Requires further validation** |", "| P3 | **GA** |"
+        )
+        self.assertFails(changed, "index row 3 carries ['GA']")
 
     def test_a_status_change_in_the_table_alone_fails(self):
-        """The drift the check exists for: the row moves, the index does not."""
-        table_row = next(l for l in self.text.splitlines() if l.startswith("| 5 | "))
-        changed = self.mutate(table_row, table_row.replace("**Public Preview**", "**GA**", 1))
-        self.assertTrue(any("index row 5" in e for e in self.check(changed).errors))
+        changed = self.mutate(
+            "| 1 | A | **GA** (Roadmap", "| 1 | A | **Public Preview** (Roadmap"
+        )
+        self.assertFails(changed, "index row 1 carries ['GA']")
+
+    def test_a_dropped_half_of_a_split_status_fails(self):
+        changed = self.mutate("Split: **GA** / **Public Preview**", "**GA**")
+        self.assertFails(changed, "index row 2 carries ['GA']")
+
+    def test_prose_in_the_status_cell_fails(self):
+        changed = self.mutate(
+            "| P3 | **Requires further validation** |",
+            "| P3 | GA in practice; **Requires further validation** |",
+        )
+        self.assertFails(changed, "must hold legend labels only")
+
+    def test_a_non_legend_bold_word_in_the_index_fails(self):
+        changed = self.mutate("| P1 | **GA** |", '| P1 | **GA** / **Retiring** |')
+        self.assertFails(changed, "must hold legend labels only")
+
+    def test_two_labels_without_split_fails(self):
+        changed = self.mutate("Split: **GA** / **Public Preview**", "**GA** / **Public Preview**")
+        self.assertFails(changed, "must hold legend labels only")
+
+    # Rows.
 
     def test_a_missing_row_fails(self):
-        changed = self.mutate(self.index_line(7) + "\n", "")
-        self.assertTrue(any("the index lists rows" in e for e in self.check(changed).errors))
+        changed = self.mutate("| [3](#row-3--gamma-control) | Gamma control | P3 | **Requires further validation** |\n", "")
+        self.assertFails(changed, "the index lists rows ['1', '2']")
 
     def test_reordered_rows_fail(self):
-        one, two = self.index_line(1), self.index_line(2)
-        changed = self.mutate(one + "\n" + two, two + "\n" + one)
-        self.assertTrue(any("in that order" in e for e in self.check(changed).errors))
+        one = "| [1](#row-1--alpha-control) | Alpha control | P1 | **GA** |"
+        three = "| [3](#row-3--gamma-control) | Gamma control | P3 | **Requires further validation** |"
+        changed = self.mutate(one, "@@").replace(three, one).replace("@@", three)
+        self.assertFails(changed, "once each and in that order")
+
+    def test_a_duplicated_row_fails(self):
+        one = "| [1](#row-1--alpha-control) | Alpha control | P1 | **GA** |"
+        changed = self.mutate(one, one + "\n" + one)
+        self.assertFails(changed, "once each and in that order")
+
+    def test_a_row_the_table_does_not_have_fails(self):
+        three = "| [3](#row-3--gamma-control) | Gamma control | P3 | **Requires further validation** |"
+        extra = three + "\n| [4](#row-4--delta) | Delta | P4 | **GA** |"
+        changed = self.mutate(three, extra)
+        self.assertFails(changed, "index row 4 has no '### Row 4")
+
+    def test_a_short_row_fails(self):
+        changed = self.mutate("| Gamma control | P3 | **Requires further validation** |", "| Gamma control |")
+        self.assertFails(changed, "is not of the form")
+
+    def test_a_row_without_a_link_fails(self):
+        changed = self.mutate("| [1](#row-1--alpha-control) |", "| 1 |")
+        self.assertFails(changed, "is not of the form")
+
+    # Headings and anchors.
 
     def test_a_broken_anchor_fails(self):
-        line = self.index_line(8)
-        changed = self.mutate(line, line.replace("-shadow-ai)", "-shadow-ai-)"))
-        self.assertTrue(any("index row 8 links to" in e for e in self.check(changed).errors))
+        changed = self.mutate("(#row-1--alpha-control)", "(#row-1-alpha-control)")
+        self.assertFails(changed, "index row 1 links to")
 
     def test_a_reworded_capability_fails(self):
-        line = self.index_line(9)
-        changed = self.mutate(line, line.replace("| Sentinel Microsoft Copilot connector |", "| Copilot connector |"))
-        self.assertTrue(any("index row 9 names the capability" in e for e in self.check(changed).errors))
+        changed = self.mutate("| Gamma control | P3 |", "| Gamma | P3 |")
+        self.assertFails(changed, "index row 3 names the capability 'Gamma'")
 
-    def test_deleting_the_index_is_an_error_not_a_pass(self):
-        changed = self.text.replace(validate.GLANCE_HEADING, "## Something else", 1)
-        errors = self.check(changed).errors
-        self.assertTrue(any("no '## At a glance' table" in e for e in errors), errors)
+    def test_a_row_with_no_heading_fails(self):
+        changed = self.mutate("### Row 3 — Gamma control\n", "")
+        self.assertFails(changed, "index row 3 has no '### Row 3")
 
-    def test_bold_words_outside_the_legend_are_ignored(self):
-        """Row 2's table cell bolds "Launched"; the index rightly carries GA alone."""
-        table_row = next(l for l in self.text.splitlines() if l.startswith("| 2 | "))
-        self.assertIn('**"Launched"**', table_row)
-        self.assertIn("| **GA** |", self.index_line(2))
+    def test_a_duplicated_heading_fails(self):
+        changed = self.mutate("### Row 3 — Gamma control\n", "### Row 3 — Gamma control\n\n### Row 3 — Gamma control\n")
+        self.assertFails(changed, "'### Row 3 — ...' appears more than once")
+
+    def test_a_heading_with_markup_fails(self):
+        changed = self.mutate("Gamma control", "`Gamma` control", count=2)
+        self.assertFails(changed, "carries markdown or HTML")
 
     def test_the_slug_matches_githubs_for_a_heading_with_punctuation(self):
         self.assertEqual(
             validate.github_heading_slug("Row 8 — Generative-AI app discovery (shadow AI)"),
             "row-8--generative-ai-app-discovery-shadow-ai",
         )
+
+    # Structure.
+
+    def test_deleting_the_index_is_an_error_not_a_pass(self):
+        changed = self.mutate("## At a glance", "## Something else")
+        self.assertFails(changed, "no '## At a glance' section")
+
+    def test_an_index_with_no_rows_fails(self):
+        start = self.FIXTURE.index("| [1]")
+        end = self.FIXTURE.index("\n\n## The matrix")
+        changed = self.FIXTURE[:start] + self.FIXTURE[end + 1 :]
+        self.assertNotEqual(changed, self.FIXTURE)
+        self.assertFails(changed, "has no index rows")
+
+    def test_a_reworded_header_fails(self):
+        changed = self.mutate("| Row | Capability | Product | Status |", "| Row | Capability | Status | Product |")
+        self.assertFails(changed, "it must be exactly")
+
+    def test_a_missing_separator_fails(self):
+        changed = self.mutate("| Row | Capability | Product | Status |\n|---|---|---|---|\n", "| Row | Capability | Product | Status |\n")
+        self.assertFails(changed, "not followed by a |---| separator")
+
+    def test_a_second_table_in_the_section_fails(self):
+        changed = self.mutate("\n\n## The matrix", "\n\n| x | y |\n|---|---|\n| 1 | **GA** |\n\n## The matrix")
+        self.assertFails(changed, "more than one table")
+
+    def test_a_fenced_index_fails(self):
+        changed = self.mutate("| Row | Capability | Product | Status |", "```\n| Row | Capability | Product | Status |")
+        self.assertFails(changed, "code fence")
+
+    def test_a_second_index_section_fails(self):
+        changed = self.mutate("## Row details", "## At a glance\n\n## Row details")
+        self.assertFails(changed, "appears 2 times")
+
+    def test_an_index_after_the_table_fails(self):
+        section_start = self.FIXTURE.index("## At a glance")
+        section_end = self.FIXTURE.index("## The matrix")
+        section = self.FIXTURE[section_start:section_end]
+        moved = self.FIXTURE.replace(section, "").replace("## Row details", section + "## Row details")
+        self.assertFails(moved, "must come before the capability table")
+
+    def test_a_missing_capability_table_fails(self):
+        changed = self.mutate("| # | Capability | Status | Primary source | Last verified |", "| # | Thing | State |")
+        self.assertFails(changed, "could not be located")
 
 
 class TableLocatorAgreementTests(unittest.TestCase):
