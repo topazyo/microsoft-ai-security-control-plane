@@ -223,7 +223,7 @@
       "id": "csa-aicm",
       "title": "CSA AI Controls Matrix (AICM) spreadsheet",
       "crosswalk_rows": ["CSA AI Controls Matrix (AICM) framework-versions row"],
-      "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified by a human against the AICM workbook.",
+      "reason": "Published only inside a registration-gated spreadsheet on the CSA artifact page (crosswalk/framework-crosswalk.md). Not machine-fetchable; control-ID mappings must be re-verified against a maintainer-held copy of the AICM workbook, in a session the maintainer directs; crosswalk/framework-crosswalk.md records who did each lookup.",
       "covered_by": "checklists/capability-status-verification.md, Group 9"
     },
     {
@@ -231,7 +231,7 @@
       "title": "GitHub Copilot policies (concepts)",
       "matrix_rows": [12],
       "cite_url": "https://docs.github.com/en/copilot/concepts/policies",
-      "reason": "Human-only by design, not by limitation: the page is perfectly fetchable, and that is exactly why the rule matters. Admitting docs.github.com to the allowed source hosts (decision D3) widened what this repository may cite; keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate, so no non-Microsoft-Learn page content ever reaches the model tier. Row 12 is re-verified by a human at the monthly cadence.",
+      "reason": "Human-only by design, not by limitation: the page is perfectly fetchable, and that is exactly why the rule matters. Admitting docs.github.com to the allowed source hosts (decision D3) widened what this repository may cite; keeping it out of the `sources` array keeps it outside what any automated run may fetch or adjudicate, so no non-Microsoft-Learn page content ever reaches the automated model tiers (D2 and D3). Row 12 is re-verified at the monthly cadence in a session the maintainer directs; the row's re-read records say who did each read.",
       "covered_by": "checklists/capability-status-verification.md, Group 7 and Group 9"
     },
     {
